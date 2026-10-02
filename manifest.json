@@ -1,9 +1,8 @@
 {
-  "name": "SmartStockAI v1",
+  "name": "SmartStockAI v1.1",
   "short_name": "SmartStockAI",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#0b1220",
-  "theme_color": "#101827",
-  "lang": "zh-Hant"
+  "background_color": "#08111f",
+  "theme_color": "#0b1424"
 }
