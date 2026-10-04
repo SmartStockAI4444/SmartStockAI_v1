@@ -1,31 +1,107 @@
 (function(){
 "use strict";
-var btn=document.getElementById("test"),step=document.getElementById("step"),result=document.getElementById("result"),log=document.getElementById("log");
-function add(s){var d=document.createElement("div");d.textContent=new Date().toLocaleTimeString()+"｜"+s;log.prepend(d);}
-function ym(){var d=new Date();return ""+d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+"01";}
-function timeoutFetch(url,ms){var ctl=new AbortController(),t=setTimeout(function(){ctl.abort();},ms);return fetch(url,{cache:"no-store",signal:ctl.signal}).finally(function(){clearTimeout(t);});}
-btn.onclick=async function(){
- btn.disabled=true;result.textContent="尚無結果";
- var m=ym(),url="https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date="+m+"&stockNo=2330&response=json&_="+Date.now();
- try{
-   step.textContent="步驟 1/4：按鈕正常，準備連線";add("按鈕事件正常");
-   await new Promise(function(r){setTimeout(r,150);});
-   step.textContent="步驟 2/4：正在連線 TWSE（最多等待 8 秒）";add("開始 fetch");
-   var r=await timeoutFetch(url,8000);add("收到 HTTP 回應："+r.status);
-   step.textContent="步驟 3/4：已收到伺服器回應，解析 JSON";
-   if(!r.ok)throw new Error("HTTP "+r.status);
-   var j=await r.json();add("JSON 解析完成，stat="+(j.stat||"無"));
-   step.textContent="步驟 4/4：檢查資料";
-   var rows=j.data||[];
-   if(!rows.length)throw new Error("TWSE 有回應，但本月份沒有交易資料");
-   var last=rows[rows.length-1];
-   result.innerHTML="<b>✓ 測試成功</b><br>台積電 2330<br>月份："+m.slice(0,6)+"<br>取得交易日："+rows.length+" 筆<br>最新資料日期："+last[0]+"<br>收盤價："+last[6];
-   step.textContent="完成：手機可以直接取得 TWSE 單月資料";add("測試成功");
- }catch(e){
-   var msg=(e&&e.name==="AbortError")?"連線超過 8 秒，已自動停止":((e&&e.message)||String(e));
-   result.innerHTML="<b>✕ 測試失敗</b><br>"+msg;
-   step.textContent="診斷停止";add("錯誤："+msg);
- }finally{btn.disabled=false;}
+var CODE="2330", NAME="台積電", TIMEOUT=8000;
+var running=false,cancelled=false,controller=null;
+var $=function(id){return document.getElementById(id);};
+
+function monthList(){
+  var d=new Date(),a=[],i,x;
+  for(i=17;i>=0;i--){
+    x=new Date(d.getFullYear(),d.getMonth()-i,1);
+    a.push(String(x.getFullYear())+String(x.getMonth()+1).padStart(2,"0")+"01");
+  }
+  return a;
+}
+var MONTHS=monthList();
+
+function key(m){return "ssa24m_"+CODE+"_"+m;}
+function statusKey(m){return "ssa24s_"+CODE+"_"+m;}
+function getStatus(m){
+  try{return JSON.parse(localStorage.getItem(statusKey(m))||'{"status":"等待","msg":""}');}
+  catch(e){return {status:"等待",msg:""};}
+}
+function setStatus(m,status,msg){
+  localStorage.setItem(statusKey(m),JSON.stringify({status:status,msg:msg||""}));
+}
+function render(){
+  var done=0,ok=0,fail=0,html="",i,m,s;
+  for(i=0;i<MONTHS.length;i++){
+    m=MONTHS[i]; s=getStatus(m);
+    if(s.status==="成功"){done++;ok++;}
+    if(s.status==="失敗"){done++;fail++;}
+    html+='<div class="row '+s.status+'"><b>'+m.slice(0,4)+' / '+m.slice(4,6)+'</b><span>'+s.status+(s.msg?'｜'+s.msg:'')+'</span></div>';
+  }
+  $("count").textContent="進度 "+done+" / 18｜成功 "+ok+"｜失敗 "+fail;
+  $("bar").style.width=(done/18*100)+"%";
+  $("months").innerHTML=html;
+}
+function wait(ms){return new Promise(function(r){setTimeout(r,ms);});}
+async function fetchOne(m){
+  var cached=localStorage.getItem(key(m));
+  if(cached){
+    setStatus(m,"成功","已保存");
+    return;
+  }
+  controller=new AbortController();
+  var timer=setTimeout(function(){controller.abort();},TIMEOUT);
+  try{
+    var url="https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date="+m+"&stockNo="+CODE+"&response=json&_="+Date.now();
+    var r=await fetch(url,{cache:"no-store",signal:controller.signal});
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    var j=await r.json();
+    if(j.stat!=="OK") throw new Error("TWSE "+(j.stat||"回應異常"));
+    var rows=j.data||[];
+    if(!rows.length) throw new Error("無交易資料");
+    localStorage.setItem(key(m),JSON.stringify(rows));
+    setStatus(m,"成功",rows.length+" 筆");
+  }catch(e){
+    var msg=(e&&e.name==="AbortError")?"逾時":((e&&e.message)||"失敗");
+    if(cancelled && msg==="逾時") msg="已取消";
+    setStatus(m,cancelled?"等待":"失敗",msg);
+  }finally{
+    clearTimeout(timer);
+    controller=null;
+  }
+}
+async function run(mode){
+  if(running)return;
+  running=true;cancelled=false;
+  $("start").disabled=true;$("retry").disabled=true;$("cancel").disabled=false;
+  $("work").textContent="已收到指令，準備逐月測試…";
+  var i,m,s,should;
+  for(i=0;i<MONTHS.length;i++){
+    if(cancelled)break;
+    m=MONTHS[i];s=getStatus(m);
+    should=(mode==="retry")?(s.status==="失敗"):(s.status!=="成功");
+    if(!should)continue;
+    setStatus(m,"處理中","連線 TWSE");
+    render();
+    $("work").innerHTML="正在處理 <b>"+NAME+" "+CODE+"</b><br>"+m.slice(0,4)+" / "+m.slice(4,6)+"｜第 "+(i+1)+" / 18 月";
+    await fetchOne(m);
+    render();
+    await wait(300);
+  }
+  running=false;
+  $("start").disabled=false;$("retry").disabled=false;$("cancel").disabled=true;
+  $("work").textContent=cancelled?"已取消。已完成月份均已保存，可稍後繼續。":"本輪完成。請查看成功／失敗月份。";
+}
+$("start").onclick=function(){run("normal");};
+$("retry").onclick=function(){run("retry");};
+$("cancel").onclick=function(){
+  cancelled=true;
+  if(controller)controller.abort();
+  $("work").textContent="正在取消目前測試…";
 };
-add("v2.3 JavaScript 已啟動");
+$("reset").onclick=function(){
+  if(!confirm("確定清除 v2.4 的台積電 18 個月測試進度？"))return;
+  var i,m;
+  for(i=0;i<MONTHS.length;i++){
+    m=MONTHS[i];
+    localStorage.removeItem(key(m));
+    localStorage.removeItem(statusKey(m));
+  }
+  render();
+  $("work").textContent="已清除，可重新測試。";
+};
+render();
 })();

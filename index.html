@@ -1,9 +1,39 @@
-<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SmartStockAI v2.3</title><link rel="stylesheet" href="style.css?v=23"></head><body>
-<header><h1>SmartStockAI <small>v2.3</small></h1><p>TWSE 單檔單月診斷</p></header>
-<main><div id="boot" class="ok">✓ 頁面已載入</div>
-<h2>第一階段診斷</h2><div class="note">這版暫時不跑 50 檔。只測試「台積電 2330」最近一個月份，確認手機是否能直接取得 TWSE 資料。</div>
-<button id="test">測試台積電 1 個月份</button>
-<div id="step" class="box">等待測試</div>
-<div id="result" class="box">尚無結果</div>
-<h2>診斷紀錄</h2><div id="log" class="box log"></div>
-</main><script src="app.js?v=23"></script></body></html>
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b1424">
+<title>SmartStockAI v2.4</title>
+<link rel="stylesheet" href="style.css?v=24">
+</head>
+<body>
+<header>
+  <h1>SmartStockAI <small>v2.4</small></h1>
+  <p>台積電 2330 × 18 個月份診斷</p>
+</header>
+<main>
+  <div id="boot" class="ok">✓ 程式已載入</div>
+  <h2>第二階段診斷</h2>
+  <div class="note">
+    這次只測「台積電 2330」，但擴大到最近 18 個月份。
+    每個月份獨立下載、最多等待 8 秒；每完成一個月份立即保存。
+    某個月份失敗也會繼續下一個月份。
+  </div>
+
+  <div class="meter"><div id="bar"></div></div>
+  <div id="count" class="count">進度 0 / 18｜成功 0｜失敗 0</div>
+
+  <button id="start">開始／繼續 18 個月份</button>
+  <button id="cancel" class="cancel" disabled>取消目前測試</button>
+  <button id="retry" class="secondary">只重試失敗月份</button>
+
+  <div id="work" class="box">等待操作</div>
+
+  <h2>月份狀態</h2>
+  <div id="months"></div>
+
+  <button id="reset" class="danger">清除 v2.4 測試進度</button>
+</main>
+<script src="app.js?v=24"></script>
+</body></html>
