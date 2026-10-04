@@ -1,13 +1,31 @@
-(function(){"use strict";
-var P=[["2330","台積電"],["2454","聯發科"],["2308","台達電"],["2382","廣達"],["3231","緯創"],["2317","鴻海"],["2303","聯電"],["2881","富邦金"],["2882","國泰金"],["2891","中信金"],["2886","兆豐金"],["2884","玉山金"],["2885","元大金"],["2892","第一金"],["5880","合庫金"],["2412","中華電"],["3045","台灣大"],["4904","遠傳"],["1301","台塑"],["1303","南亞"],["1326","台化"],["2002","中鋼"],["2603","長榮"],["2609","陽明"],["2615","萬海"],["2606","裕民"],["2618","長榮航"],["2610","華航"],["1216","統一"],["2912","統一超"],["2207","和泰車"],["2105","正新"],["1101","台泥"],["1102","亞泥"],["1402","遠東新"],["2357","華碩"],["2379","瑞昱"],["3034","聯詠"],["3008","大立光"],["3711","日月光投控"],["2345","智邦"],["2356","英業達"],["2376","技嘉"],["2377","微星"],["2324","仁寶"],["2353","宏碁"],["6669","緯穎"],["3661","世芯-KY"],["3443","創意"],["3017","奇鋐"]];
-var S={},cancel=false,ctl=null;try{S=JSON.parse(localStorage.getItem("ssa22state")||"{}")}catch(e){}
-function E(x){return document.getElementById(x)} function save(){localStorage.setItem("ssa22state",JSON.stringify(S))}
-function months(){var d=new Date(),a=[],i,x;for(i=17;i>=0;i--){x=new Date(d.getFullYear(),d.getMonth()-i,1);a.push(""+x.getFullYear()+String(x.getMonth()+1).padStart(2,"0")+"01")}return a}
-function render(){var done=0,html="",i,s;for(i=0;i<P.length;i++){s=S[P[i][0]]||{status:"等待",months:0};if(s.status==="成功"||s.status==="失敗")done++;html+='<div class="row"><b>'+P[i][1]+' '+P[i][0]+'</b><span>'+s.status+'｜'+(s.months||0)+'/18'+(s.msg?'｜'+s.msg:'')+'</span></div>'}E("status").textContent="已處理 "+done+" / 50";E("list").innerHTML=html}
-async function fetchM(code,m){var key="ssa22m_"+code+"_"+m,old=localStorage.getItem(key);if(old)return;ctl=new AbortController();var t=setTimeout(function(){ctl.abort()},6000);try{var r=await fetch("https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date="+m+"&stockNo="+code+"&response=json&_="+Date.now(),{cache:"no-store",signal:ctl.signal});if(!r.ok)throw Error("HTTP "+r.status);var j=await r.json();localStorage.setItem(key,JSON.stringify(j.data||[]))}finally{clearTimeout(t);ctl=null}}
-async function one(code,name){var ms=months(),ok=0,fail=0,i;S[code]={status:"處理中",months:0};save();render();for(i=0;i<18;i++){if(cancel){S[code]={status:"等待",months:ok,msg:"已取消"};save();render();return}E("work").innerHTML="正在處理 <b>"+name+" "+code+"</b><br>第 "+(i+1)+" / 18 月｜已保存 "+ok+" 月";try{await fetchM(code,ms[i]);ok++}catch(e){fail++}S[code]={status:"處理中",months:ok,msg:fail?"失敗月份 "+fail:""};save();render()}S[code]={status:ok>=5?"成功":"失敗",months:ok,msg:fail?"失敗月份 "+fail:""};save();render()}
-async function run(){cancel=false;E("work").textContent="已收到指令，準備開始…";E("next").disabled=true;E("cancel").disabled=false;var q=[],i,c;for(i=0;i<P.length&&q.length<5;i++){c=P[i][0];if(!S[c]||S[c].status==="等待")q.push(P[i])}for(i=0;i<q.length&&!cancel;i++)await one(q[i][0],q[i][1]);E("next").disabled=false;E("cancel").disabled=true;E("work").textContent=cancel?"已取消，已下載月份已保存。":"本批完成，進度已保存。"}
-function init(){E("next").onclick=run;E("cancel").onclick=function(){cancel=true;if(ctl)ctl.abort();E("work").textContent="正在取消…"};render();E("boot").className="ok";E("boot").textContent="✓ 程式已載入，按鈕可以使用"}
-try{if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init);else init()}catch(e){E("boot").className="bad";E("boot").textContent="程式載入錯誤："+e.message}
-window.onerror=function(m){var b=E("boot");if(b){b.className="bad";b.textContent="程式錯誤："+m}}
+(function(){
+"use strict";
+var btn=document.getElementById("test"),step=document.getElementById("step"),result=document.getElementById("result"),log=document.getElementById("log");
+function add(s){var d=document.createElement("div");d.textContent=new Date().toLocaleTimeString()+"｜"+s;log.prepend(d);}
+function ym(){var d=new Date();return ""+d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+"01";}
+function timeoutFetch(url,ms){var ctl=new AbortController(),t=setTimeout(function(){ctl.abort();},ms);return fetch(url,{cache:"no-store",signal:ctl.signal}).finally(function(){clearTimeout(t);});}
+btn.onclick=async function(){
+ btn.disabled=true;result.textContent="尚無結果";
+ var m=ym(),url="https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date="+m+"&stockNo=2330&response=json&_="+Date.now();
+ try{
+   step.textContent="步驟 1/4：按鈕正常，準備連線";add("按鈕事件正常");
+   await new Promise(function(r){setTimeout(r,150);});
+   step.textContent="步驟 2/4：正在連線 TWSE（最多等待 8 秒）";add("開始 fetch");
+   var r=await timeoutFetch(url,8000);add("收到 HTTP 回應："+r.status);
+   step.textContent="步驟 3/4：已收到伺服器回應，解析 JSON";
+   if(!r.ok)throw new Error("HTTP "+r.status);
+   var j=await r.json();add("JSON 解析完成，stat="+(j.stat||"無"));
+   step.textContent="步驟 4/4：檢查資料";
+   var rows=j.data||[];
+   if(!rows.length)throw new Error("TWSE 有回應，但本月份沒有交易資料");
+   var last=rows[rows.length-1];
+   result.innerHTML="<b>✓ 測試成功</b><br>台積電 2330<br>月份："+m.slice(0,6)+"<br>取得交易日："+rows.length+" 筆<br>最新資料日期："+last[0]+"<br>收盤價："+last[6];
+   step.textContent="完成：手機可以直接取得 TWSE 單月資料";add("測試成功");
+ }catch(e){
+   var msg=(e&&e.name==="AbortError")?"連線超過 8 秒，已自動停止":((e&&e.message)||String(e));
+   result.innerHTML="<b>✕ 測試失敗</b><br>"+msg;
+   step.textContent="診斷停止";add("錯誤："+msg);
+ }finally{btn.disabled=false;}
+};
+add("v2.3 JavaScript 已啟動");
 })();

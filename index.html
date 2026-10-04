@@ -1,1 +1,9 @@
-<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SmartStockAI v2.2</title><link rel="stylesheet" href="style.css?v=22"></head><body><header><h1>SmartStockAI <small>v2.2</small></h1><p>手機相容修正版 × 分批驗證</p></header><main><div id="boot">正在載入程式…</div><h2>50 檔樣本外驗證</h2><p class="note">固定 65 分＋持有 20 個交易日。這版先確認手機按鈕與逐月下載流程穩定。</p><div id="status">已處理 0 / 50</div><button id="next">處理下一批 5 檔</button><button id="cancel" disabled>取消目前驗證</button><div id="work">等待操作</div><h2>下載狀態</h2><div id="list"></div></main><script src="app.js?v=22"></script></body></html>
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SmartStockAI v2.3</title><link rel="stylesheet" href="style.css?v=23"></head><body>
+<header><h1>SmartStockAI <small>v2.3</small></h1><p>TWSE 單檔單月診斷</p></header>
+<main><div id="boot" class="ok">✓ 頁面已載入</div>
+<h2>第一階段診斷</h2><div class="note">這版暫時不跑 50 檔。只測試「台積電 2330」最近一個月份，確認手機是否能直接取得 TWSE 資料。</div>
+<button id="test">測試台積電 1 個月份</button>
+<div id="step" class="box">等待測試</div>
+<div id="result" class="box">尚無結果</div>
+<h2>診斷紀錄</h2><div id="log" class="box log"></div>
+</main><script src="app.js?v=23"></script></body></html>
