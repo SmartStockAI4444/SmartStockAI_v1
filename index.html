@@ -1,1 +1,11 @@
-<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SmartStockAI v2.8</title><link rel="stylesheet" href="style.css?v=28"></head><body><header><h1>SmartStockAI <small>v2.8</small></h1><p>台積電 2330 × 18 月自動接力</p></header><main><div class="ok">✓ 程式已載入</div><div class="note">沿用 v2.7 單月請求。每月完成後停 1 秒，再啟動下一次獨立請求；任何月份失敗即停止。</div><div class="meter"><div id="bar"></div></div><div id="count">完成 0 / 18</div><button id="auto">開始自動下載 18 個月份</button><button id="stop" disabled>停止</button><div id="work" class="box">等待操作</div><h2>月份狀態</h2><div id="months"></div><h2>診斷紀錄</h2><div id="log" class="box"></div></main><script src="app.js?v=28"></script></body></html>
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SmartStockAI v2.9</title><link rel="stylesheet" href="style.css?v=29"></head><body>
+<header><h1>SmartStockAI <small>v2.9</small></h1><p>5 檔股票 × 18 月穩定性測試</p></header><main>
+<div class="ok">✓ 程式已載入</div>
+<div class="note">沿用 v2.8 已完成 18/18 的方式。依序處理台積電、聯發科、台達電、廣達、緯創；每次只抓 1 檔的 1 個月份，完成後短暫等待再繼續。單次失敗會記錄並繼續，不讓整批卡死。</div>
+<div class="meter"><div id="bar"></div></div>
+<div id="summary">完成 0 / 90｜成功 0｜失敗 0</div>
+<button id="start">開始／繼續 5 檔 × 18 月</button><button id="stop" class="stop" disabled>停止</button>
+<div id="work" class="box">等待操作</div>
+<h2>股票進度</h2><div id="stocks"></div>
+<h2>最近紀錄</h2><div id="log" class="box log"></div>
+</main><script src="app.js?v=29"></script></body></html>
