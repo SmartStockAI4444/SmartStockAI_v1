@@ -1,13 +1,1 @@
-<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SmartStockAI v2.6</title><link rel="stylesheet" href="style.css?v=26"></head><body>
-<header><h1>SmartStockAI <small>v2.6</small></h1><p>回到 v2.3 成功架構 × 手動月份測試</p></header>
-<main>
-<div class="ok">✓ 程式已載入</div>
-<h2>台積電 2330 單月測試</h2>
-<div class="note">這版不使用自動迴圈、不使用接力、不使用下載進度。選一個月份後按一次，只做一次 TWSE 請求。</div>
-<label for="month">選擇月份</label>
-<select id="month"></select>
-<button id="test">測試這個月份</button>
-<div id="step" class="box">等待測試</div>
-<div id="result" class="box">尚無結果</div>
-<h2>本次診斷紀錄</h2><div id="log" class="box log"></div>
-</main><script src="app.js?v=26"></script></body></html>
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SmartStockAI v2.7</title><link rel="stylesheet" href="style.css?v=27"></head><body><header><h1>SmartStockAI <small>v2.7</small></h1><p>穩定單月核心 × 成功後切換下一月</p></header><main><div class="ok">✓ 程式已載入</div><h2>台積電 2330 逐月測試</h2><div class="note">每按一次只下載 1 個月份。成功後只切換到前一個月份，不會自動下載；請再按一次按鈕。</div><label>目前月份</label><select id="month"></select><button id="test">下載目前月份</button><div id="step" class="box">等待測試</div><div id="result" class="box">尚無結果</div><h2>本次成功紀錄</h2><div id="success" class="box">尚未下載</div><h2>診斷紀錄</h2><div id="log" class="box log"></div></main><script src="app.js?v=27"></script></body></html>
