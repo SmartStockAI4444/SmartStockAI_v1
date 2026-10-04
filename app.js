@@ -1,107 +1,26 @@
-(function(){
-"use strict";
-var CODE="2330", NAME="台積電", TIMEOUT=8000;
-var running=false,cancelled=false,controller=null;
-var $=function(id){return document.getElementById(id);};
-
-function monthList(){
-  var d=new Date(),a=[],i,x;
-  for(i=17;i>=0;i--){
-    x=new Date(d.getFullYear(),d.getMonth()-i,1);
-    a.push(String(x.getFullYear())+String(x.getMonth()+1).padStart(2,"0")+"01");
-  }
-  return a;
+(function(){"use strict";
+var CODE="2330",TIMEOUT=8000,$=function(x){return document.getElementById(x)},busy=false;
+function list(){var d=new Date(),a=[],i,x;for(i=17;i>=0;i--){x=new Date(d.getFullYear(),d.getMonth()-i,1);a.push(String(x.getFullYear())+String(x.getMonth()+1).padStart(2,"0")+"01")}return a}
+var M=list();
+function sk(m){return"ssa25s_"+m} function dk(m){return"ssa25d_"+m}
+function gs(m){try{return JSON.parse(localStorage.getItem(sk(m))||'{"s":"等待","msg":""}')}catch(e){return{s:"等待",msg:""}}}
+function ss(m,s,msg){localStorage.setItem(sk(m),JSON.stringify({s:s,msg:msg||""}))}
+function render(){var done=0,html="",i,x;for(i=0;i<M.length;i++){x=gs(M[i]);if(x.s==="成功")done++;html+='<div class="row '+x.s+'"><b>'+M[i].slice(0,4)+' / '+M[i].slice(4,6)+'</b><span>'+x.s+(x.msg?'｜'+x.msg:'')+'</span></div>'}$("count").textContent="完成 "+done+" / 18";$("bar").style.width=(done/18*100)+"%";$("months").innerHTML=html}
+function target(retry){var i,s;if(retry){for(i=0;i<M.length;i++){s=gs(M[i]);if(s.s==="失敗")return M[i]}}else{for(i=0;i<M.length;i++){s=gs(M[i]);if(s.s!=="成功")return M[i]}}return null}
+async function run(retry){if(busy)return;busy=true;$("next").disabled=true;$("retry").disabled=true;var m=target(retry);if(!m){$("work").textContent=retry?"目前沒有失敗月份。":"18 個月份已全部成功。";busy=false;$("next").disabled=false;$("retry").disabled=false;return}
+ss(m,"處理中","準備連線");render();$("work").innerHTML="已收到指令：<b>"+m.slice(0,4)+" / "+m.slice(4,6)+"</b><br>正在連線 TWSE（最多 8 秒）";
+var ctl=new AbortController(),timer=setTimeout(function(){ctl.abort()},TIMEOUT);
+try{
+ var u="https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date="+m+"&stockNo="+CODE+"&response=json&_="+Date.now();
+ var r=await fetch(u,{cache:"no-store",signal:ctl.signal});if(!r.ok)throw Error("HTTP "+r.status);
+ var j=await r.json();if(j.stat!=="OK")throw Error("TWSE "+(j.stat||"異常"));
+ var rows=j.data||[];if(!rows.length)throw Error("無交易資料");
+ localStorage.setItem(dk(m),JSON.stringify(rows));ss(m,"成功",rows.length+" 筆");
+ $("work").innerHTML="<b>✓ 本月成功</b><br>"+m.slice(0,4)+" / "+m.slice(4,6)+"｜取得 "+rows.length+" 個交易日。<br>請再按一次「下載下一個月份」。";
+}catch(e){var msg=e&&e.name==="AbortError"?"逾時":((e&&e.message)||"失敗");ss(m,"失敗",msg);$("work").innerHTML="<b>✕ 本月失敗</b><br>"+m.slice(0,4)+" / "+m.slice(4,6)+"｜"+msg+"<br>可按「重試第一個失敗月份」。"}
+finally{clearTimeout(timer);busy=false;$("next").disabled=false;$("retry").disabled=false;render()}
 }
-var MONTHS=monthList();
-
-function key(m){return "ssa24m_"+CODE+"_"+m;}
-function statusKey(m){return "ssa24s_"+CODE+"_"+m;}
-function getStatus(m){
-  try{return JSON.parse(localStorage.getItem(statusKey(m))||'{"status":"等待","msg":""}');}
-  catch(e){return {status:"等待",msg:""};}
-}
-function setStatus(m,status,msg){
-  localStorage.setItem(statusKey(m),JSON.stringify({status:status,msg:msg||""}));
-}
-function render(){
-  var done=0,ok=0,fail=0,html="",i,m,s;
-  for(i=0;i<MONTHS.length;i++){
-    m=MONTHS[i]; s=getStatus(m);
-    if(s.status==="成功"){done++;ok++;}
-    if(s.status==="失敗"){done++;fail++;}
-    html+='<div class="row '+s.status+'"><b>'+m.slice(0,4)+' / '+m.slice(4,6)+'</b><span>'+s.status+(s.msg?'｜'+s.msg:'')+'</span></div>';
-  }
-  $("count").textContent="進度 "+done+" / 18｜成功 "+ok+"｜失敗 "+fail;
-  $("bar").style.width=(done/18*100)+"%";
-  $("months").innerHTML=html;
-}
-function wait(ms){return new Promise(function(r){setTimeout(r,ms);});}
-async function fetchOne(m){
-  var cached=localStorage.getItem(key(m));
-  if(cached){
-    setStatus(m,"成功","已保存");
-    return;
-  }
-  controller=new AbortController();
-  var timer=setTimeout(function(){controller.abort();},TIMEOUT);
-  try{
-    var url="https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date="+m+"&stockNo="+CODE+"&response=json&_="+Date.now();
-    var r=await fetch(url,{cache:"no-store",signal:controller.signal});
-    if(!r.ok) throw new Error("HTTP "+r.status);
-    var j=await r.json();
-    if(j.stat!=="OK") throw new Error("TWSE "+(j.stat||"回應異常"));
-    var rows=j.data||[];
-    if(!rows.length) throw new Error("無交易資料");
-    localStorage.setItem(key(m),JSON.stringify(rows));
-    setStatus(m,"成功",rows.length+" 筆");
-  }catch(e){
-    var msg=(e&&e.name==="AbortError")?"逾時":((e&&e.message)||"失敗");
-    if(cancelled && msg==="逾時") msg="已取消";
-    setStatus(m,cancelled?"等待":"失敗",msg);
-  }finally{
-    clearTimeout(timer);
-    controller=null;
-  }
-}
-async function run(mode){
-  if(running)return;
-  running=true;cancelled=false;
-  $("start").disabled=true;$("retry").disabled=true;$("cancel").disabled=false;
-  $("work").textContent="已收到指令，準備逐月測試…";
-  var i,m,s,should;
-  for(i=0;i<MONTHS.length;i++){
-    if(cancelled)break;
-    m=MONTHS[i];s=getStatus(m);
-    should=(mode==="retry")?(s.status==="失敗"):(s.status!=="成功");
-    if(!should)continue;
-    setStatus(m,"處理中","連線 TWSE");
-    render();
-    $("work").innerHTML="正在處理 <b>"+NAME+" "+CODE+"</b><br>"+m.slice(0,4)+" / "+m.slice(4,6)+"｜第 "+(i+1)+" / 18 月";
-    await fetchOne(m);
-    render();
-    await wait(300);
-  }
-  running=false;
-  $("start").disabled=false;$("retry").disabled=false;$("cancel").disabled=true;
-  $("work").textContent=cancelled?"已取消。已完成月份均已保存，可稍後繼續。":"本輪完成。請查看成功／失敗月份。";
-}
-$("start").onclick=function(){run("normal");};
-$("retry").onclick=function(){run("retry");};
-$("cancel").onclick=function(){
-  cancelled=true;
-  if(controller)controller.abort();
-  $("work").textContent="正在取消目前測試…";
-};
-$("reset").onclick=function(){
-  if(!confirm("確定清除 v2.4 的台積電 18 個月測試進度？"))return;
-  var i,m;
-  for(i=0;i<MONTHS.length;i++){
-    m=MONTHS[i];
-    localStorage.removeItem(key(m));
-    localStorage.removeItem(statusKey(m));
-  }
-  render();
-  $("work").textContent="已清除，可重新測試。";
-};
+$("next").onclick=function(){run(false)};$("retry").onclick=function(){run(true)};
+$("reset").onclick=function(){if(!confirm("確定清除 v2.5 進度？"))return;for(var i=0;i<M.length;i++){localStorage.removeItem(sk(M[i]));localStorage.removeItem(dk(M[i]))}render();$("work").textContent="已清除，可重新開始。"};
 render();
 })();
