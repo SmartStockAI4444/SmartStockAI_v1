@@ -1,7 +1,10 @@
-<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SmartStockAI v3.1</title><link rel="stylesheet" href="style.css?v=31"></head><body>
-<header><h1>SmartStockAI <small>v3.1</small></h1><p>10 檔 × 18 月｜180 任務穩定性測試</p></header><main>
-<div class="ok">✓ 程式已載入</div><div class="note">完整保留 v3.0 的成功核心：每個月股任務最多嘗試 3 次，失敗後等待再重試。這次只把股票數由 5 檔增加到 10 檔，共 180 個任務。</div>
-<div class="meter"><div id="bar"></div></div><div id="summary">完成 0 / 180｜成功 0｜失敗 0</div>
-<button id="start">開始／繼續 10 檔 × 18 月</button><button id="retry" disabled>只重試真正失敗項目</button><button id="stop" class="stop" disabled>停止</button>
-<div id="work" class="box">等待操作</div><h2>股票進度</h2><div id="stocks"></div><h2>真正失敗項目</h2><div id="fails" class="box">目前沒有</div><h2>最近紀錄</h2><div id="log" class="box log"></div>
-</main><script src="app.js?v=31"></script></body></html>
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SmartStockAI v3.2</title><link rel="stylesheet" href="style.css?v=32"></head><body>
+<header><h1>SmartStockAI <small>v3.2</small></h1><p>50 檔 × 18 月｜900 任務斷點續跑</p></header><main>
+<div class="ok">✓ 程式已載入</div>
+<div class="note">保留 v3.1 的三次重試核心，擴大到 50 檔。每完成一個月股任務就立即保存進度；重新整理或中途停止後，可從尚未完成處繼續。為避免儲存空間過大，本版保存「完成狀態」，不保存全部行情內容。</div>
+<div class="meter"><div id="bar"></div></div><div id="summary">完成 0 / 900｜成功 0｜失敗 0</div>
+<button id="start">開始／繼續 50 檔 × 18 月</button><button id="retry" disabled>只重試真正失敗項目</button><button id="stop" class="stop" disabled>停止</button>
+<div id="work" class="box">等待操作</div>
+<div class="actions"><button id="clear" class="minor">清除已保存進度</button></div>
+<h2>股票進度</h2><div id="stocks"></div><h2>真正失敗項目</h2><div id="fails" class="box">目前沒有</div><h2>最近紀錄</h2><div id="log" class="box log"></div>
+</main><script src="app.js?v=32"></script></body></html>
