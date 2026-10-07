@@ -43,101 +43,22 @@ function riskCompare(){
  h+='</div><p class="foot">四個停損門檻在看結果前已固定列出，目的為穩健性比較，不是挑最好看的參數。每個訊號日最多 5 檔、依 Strategy 分數排序。日期型回撤把同日交易先等權平均，再按日期累積成簡化淨值曲線；仍未完整模擬資金占用、重疊持倉、盤中成交、滑價、股利與實際稅費，因此不是券商帳戶真實回撤。歷史結果不保證未來績效。</p>';
  $('riskResult').innerHTML=h
 }
-function portfolioSim(stopLoss){
- if(!lastValidation||!lastValidation.trades.length)return null;
- const initial=100000,maxPos=5;
- let cash=initial,positions=[],curve=[],tradesDone=[],signalCount=0,buyCount=0;
- function normDate(s){
-   if(!s)return '';
-   let a=String(s).trim().replace(/\./g,'/').replace(/-/g,'/').split('/');
-   if(a.length<3)return '';
-   let y=parseInt(a[0]),m=parseInt(a[1]),d=parseInt(a[2]);
-   if(!Number.isFinite(y)||!Number.isFinite(m)||!Number.isFinite(d))return '';
-   if(y<1911)y+=1911;
-   return y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0')
- }
- // Merge every downloaded month into one history per stock first.
- let hist={};
- P.forEach(p=>hist[p[0]]=[]);
- Object.entries(D).forEach(([k,rows])=>{
-   let code=k.split('_')[0];
-   if(!hist[code])hist[code]=[];
-   (rows||[]).forEach(x=>{
-     let d=normDate(x.d),c=Number(x.c);
-     if(d&&Number.isFinite(c)&&c>0)hist[code].push({d,c})
-   })
- });
- // Deduplicate by date for each stock, then create the common market calendar.
- let px={},allDates=new Set();
- Object.entries(hist).forEach(([code,rows])=>{
-   let dm=new Map();
-   rows.forEach(x=>dm.set(x.d,x.c));
-   [...dm.entries()].sort((a,b)=>a[0].localeCompare(b[0])).forEach(([d,c])=>{
-     (px[d]||(px[d]={}))[code]=c; allDates.add(d)
-   })
- });
- let dates=[...allDates].sort();
-
- let signals={};
- lastValidation.trades.forEach(t=>{
-   let d=normDate(t.date);
-   if(d){(signals[d]||(signals[d]=[])).push(t);signalCount++}
- });
-
- function equity(d){
-   return cash+positions.reduce((s,p)=>s+((px[d]&&px[d][p.code])||p.last||p.entry)*p.shares,0)
- }
- for(let d of dates){
-   let today=px[d]||{};
-   for(let i=positions.length-1;i>=0;i--){
-     let p=positions[i],price=today[p.code];
-     if(price){p.last=price;p.days++} else continue;
-     let stop=stopLoss&&price/p.entry-1<=-stopLoss,time=p.days>=HOLD;
-     if(stop||time){
-       let gross=p.shares*price,fee=gross*COST;
-       cash+=gross-fee;
-       tradesDone.push({r:(price/p.entry-1)-COST*2,reason:stop?'stop':'time'});
-       positions.splice(i,1)
-     }
-   }
-   let sig=(signals[d]||[]).slice().sort((a,b)=>b.score-a.score);
-   for(let t of sig){
-     if(positions.length>=maxPos)break;
-     if(positions.some(p=>p.code===t.code))continue;
-     let price=today[t.code]||Number(t.entry);
-     if(!Number.isFinite(price)||price<=0)continue;
-     let budget=Math.min(cash,equity(d)/maxPos),shares=Math.floor(budget/price);
-     if(shares<1)continue;
-     let cost=shares*price,fee=cost*COST;
-     if(cost+fee>cash)continue;
-     cash-=cost+fee;buyCount++;
-     positions.push({code:t.code,entry:price,last:price,shares,days:0})
-   }
-   curve.push({d,e:equity(d)})
- }
- if(curve.length){
-   let d=curve[curve.length-1].d,today=px[d]||{};
-   for(let p of positions){
-     let price=today[p.code]||p.last||p.entry,gross=p.shares*price;
-     cash+=gross-gross*COST;
-     tradesDone.push({r:(price/p.entry-1)-COST*2,reason:'end'})
-   }
-   positions=[];curve[curve.length-1].e=cash
- }
- let peak=initial,dd=0;
- curve.forEach(x=>{peak=Math.max(peak,x.e);dd=Math.min(dd,x.e/peak-1)});
- let wins=tradesDone.filter(x=>x.r>0).length;
- let stocksWithData=Object.values(hist).filter(r=>r.length).length;
- return {initial,final:cash,ret:cash/initial-1,dd,n:tradesDone.length,
-   w:tradesDone.length?wins/tradesDone.length:0,
-   stops:tradesDone.filter(x=>x.reason==='stop').length,
-   signalCount,buyCount,marketDays:dates.length,stocksWithData}
+async function portfolioSim(stopLoss){
+ const initial=100000,maxPos=5;let cash=initial,pos=[],curve=[],done=[],buys=0;
+ function nd(s){let a=String(s||'').trim().replace(/\./g,'/').replace(/-/g,'/').split('/');if(a.length<3)return'';let y=+a[0],m=+a[1],d=+a[2];if(y<1911)y+=1911;return y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0')}
+ if(!DB)await openDB();let hist={};P.forEach(p=>hist[p[0]]=[]);let mo=0,rn=0;
+ for(let p of P)for(let m of M){let r=await idbGet(p[0]+'_'+m);if(r&&r.length){mo++;for(let x of r){let d=nd(x.d),c=+x.c;if(d&&c>0){hist[p[0]].push({d,c});rn++}}}}
+ let px={},ds=new Set(),stocks=0;for(let [code,r] of Object.entries(hist)){if(!r.length)continue;stocks++;let dm=new Map(r.map(x=>[x.d,x.c]));for(let [d,c] of dm){(px[d]||(px[d]={}))[code]=c;ds.add(d)}}let dates=[...ds].sort(),sig={};for(let t of lastValidation.trades){let d=nd(t.date);if(d)(sig[d]||(sig[d]=[])).push(t)}
+ const eq=d=>cash+pos.reduce((z,p)=>z+((px[d]||{})[p.code]||p.last)*p.shares,0);
+ for(let d of dates){let td=px[d]||{};for(let i=pos.length-1;i>=0;i--){let p=pos[i],pr=td[p.code];if(!pr)continue;p.last=pr;p.days++;let st=stopLoss&&pr/p.entry-1<=-stopLoss;if(st||p.days>=HOLD){let g=p.shares*pr;cash+=g-g*COST;done.push({r:pr/p.entry-1-COST*2,stop:!!st});pos.splice(i,1)}}for(let t of (sig[d]||[]).sort((a,b)=>b.score-a.score)){if(pos.length>=maxPos)break;if(pos.some(p=>p.code===t.code))continue;let pr=td[t.code]||+t.entry,b=Math.min(cash,eq(d)/maxPos),sh=Math.floor(b/pr);if(sh<1)continue;let c=sh*pr,f=c*COST;if(c+f>cash)continue;cash-=c+f;buys++;pos.push({code:t.code,entry:pr,last:pr,shares:sh,days:0})}curve.push({d,e:eq(d)})}
+ if(curve.length){let td=px[curve[curve.length-1].d]||{};for(let p of pos){let pr=td[p.code]||p.last,g=p.shares*pr;cash+=g-g*COST;done.push({r:pr/p.entry-1-COST*2,stop:false})}curve[curve.length-1].e=cash}
+ let peak=initial,dd=0;for(let x of curve){peak=Math.max(peak,x.e);dd=Math.min(dd,x.e/peak-1)}let wins=done.filter(x=>x.r>0).length;
+ return{final:cash,ret:cash/initial-1,dd,n:done.length,w:done.length?wins/done.length:0,stops:done.filter(x=>x.stop).length,signalCount:lastValidation.trades.length,buyCount:buys,marketDays:dates.length,stocksWithData:stocks,monthObjects:mo,rowCount:rn}
 }
-function portfolioCompare(){
+async function portfolioCompare(){
  if(!lastValidation||!lastValidation.trades.length){$('portfolioResult').innerHTML='請先執行第二步固定規則驗證。';return}
- let a=portfolioSim(0),b=portfolioSim(.10);
- function card(name,x){return '<div><h4>'+name+'</h4><b>NT$ '+Math.round(x.final).toLocaleString()+'</b><span>總報酬 '+pc(x.ret)+'</span><span>最大回撤 '+pc(x.dd)+'</span><span>'+x.n+' 筆｜勝率 '+pc(x.w)+'</span><span>停損 '+x.stops+' 次</span><span>訊號 '+x.signalCount+'｜實際買進 '+x.buyCount+'</span><span>行情日 '+x.marketDays+'｜有行情 '+x.stocksWithData+'/50 檔</span></div>'}
- $('portfolioResult').innerHTML='<h3>NT$100,000 資金型模擬</h3><div class="compare">'+card('無停損',a)+card('固定 -10%',b)+'</div><p class="foot">規則預先固定：初始資金 NT$100,000、最多同時5檔、每檔目標約總資產20%、同日訊號依 Strategy 分數排序；先處理當日出場再進場。持有最多20個交易日；-10% 版本以每日收盤價判斷停損。交易成本沿用0.585%的簡化設定。此模型比前版更接近資金占用與重疊持倉，但仍不含盤中成交、滑價、零股細節、股利及完整稅費，歷史結果不保證未來績效。</p>'
+ $('portfolioResult').innerHTML='正在直接讀取 IndexedDB 永久行情…';let a=await portfolioSim(0),b=await portfolioSim(.10);
+ function card(n,x){return '<div><h4>'+n+'</h4><b>NT$ '+Math.round(x.final).toLocaleString()+'</b><span>總報酬 '+pc(x.ret)+'</span><span>最大回撤 '+pc(x.dd)+'</span><span>'+x.n+'筆｜勝率 '+pc(x.w)+'</span><span>停損 '+x.stops+'次</span><span>訊號 '+x.signalCount+'｜實際買進 '+x.buyCount+'</span><span>行情日 '+x.marketDays+'｜有行情 '+x.stocksWithData+'/50</span><span>DB月份 '+x.monthObjects+'/1800｜有效日列 '+x.rowCount+'</span></div>'}
+ $('portfolioResult').innerHTML='<h3>NT$100,000 資金型模擬</h3><div class="compare">'+card('無停損',a)+card('固定 -10%',b)+'</div><p class="foot">v3.8.3 第五步直接讀取 IndexedDB，不依賴記憶體 D。策略參數不變；歷史模擬不代表未來績效。</p>'
 }
-
  $('start').onclick=()=>go(false);$('retry').onclick=()=>go(true);$('stop').onclick=()=>{stop=true;if(ctl)ctl.abort()};$('validate').onclick=validate;$('stability').onclick=stability;$('risk').onclick=riskCompare;$('portfolio').onclick=portfolioCompare;draw();load();})();
