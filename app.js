@@ -5,26 +5,42 @@ function idbPut(k,x){return new Promise(r=>{if(!DB)return r(false);let q=DB.tran
 async function load(){await openDB();for(let p of P){for(let m of M){let k=p[0]+'_'+m,x=await idbGet(k);if(!x){try{x=JSON.parse(localStorage.getItem('ssa35_'+k)||localStorage.getItem('ssa33_'+k)||'null')}catch(e){}if(x&&x.length)await idbPut(k,x)}if(x&&x.length){D[k]=x;S[k]='成功'}}}draw();$('work').textContent=Object.keys(D).length?'已載入永久行情資料。':'未找到舊行情資料；若 v3.5 資料只存在記憶體，這次需重新下載一次。之後版本將可直接沿用。'}function save(k,x){idbPut(k,x);try{localStorage.setItem('ssa35_'+k,JSON.stringify(x))}catch(e){}}function draw(){let ok=0,fail=0,h='';P.forEach(p=>{let a=0,b=0;M.forEach(m=>{let s=S[p[0]+'_'+m];if(s==='成功'){ok++;a++}if(s==='失敗'){fail++;b++}});h+='<div class="card"><b>'+p[1]+' '+p[0]+'</b><span>'+a+'/36'+(b?'｜失敗 '+b:'')+'</span></div>'});let done=ok+fail;$('summary').textContent='完成 '+done+' / 1800｜成功 '+ok+'｜失敗 '+fail;$('bar').style.width=(done/18)+'%';$('stocks').innerHTML=h;$('retry').disabled=run||!fail;$('validate').disabled=run||ok<1620}async function one(p,m,a){let k=p[0]+'_'+m;S[k]='處理中';draw();$('work').textContent='正在取得 '+p[1]+' '+m.slice(0,6)+'｜第 '+a+' 次';ctl=new AbortController();let t=setTimeout(()=>ctl.abort(),10000);try{let r=await fetch('https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date='+m+'&stockNo='+p[0]+'&response=json&_='+Date.now(),{cache:'no-store',signal:ctl.signal});if(!r.ok)throw Error('HTTP '+r.status);let j=await r.json();if(j.stat!=='OK')throw Error(j.stat||'TWSE異常');let x=(j.data||[]).map(q=>[dk(q[0]),n(q[6]),n(q[1])]).filter(q=>q[1]>0);if(!x.length)throw Error('無資料');D[k]=x;save(k,x);S[k]='成功';return true}catch(e){if(stop)S[k]='等待';return false}finally{clearTimeout(t);ctl=null;draw()}}async function task(p,m){let k=p[0]+'_'+m;for(let a=1;a<=3&&!stop;a++){if(await one(p,m,a))return;if(a<3)await sleep(a===1?1800:3500)}if(!stop)S[k]='失敗';draw()}async function go(failOnly){if(run)return;run=true;stop=false;$('start').disabled=true;$('stop').disabled=false;for(let p of P){for(let m of M){if(stop)break;let k=p[0]+'_'+m;if(failOnly){if(S[k]!=='失敗')continue;S[k]='等待'}else if(S[k]==='成功'||S[k]==='失敗')continue;await task(p,m);if(!stop)await sleep(900)}if(stop)break;if(!stop)await sleep(1400)}run=false;$('start').disabled=false;$('stop').disabled=true;draw();$('work').textContent=stop?'已停止，可繼續。':'下載階段完成。'}function series(c){let z=new Map;M.forEach(m=>(D[c+'_'+m]||[]).forEach(x=>z.set(x[0],{d:x[0],c:x[1],v:x[2]})));return [...z.values()].sort((a,b)=>a.d.localeCompare(b.d))}function ma(a,k,i){let s=0;for(let j=i-k+1;j<=i;j++)s+=a[j].c;return s/k}function score(a,i){if(i<20)return null;let c=a[i].c,m5=ma(a,5,i),m20=ma(a,20,i),r5=c/a[i-5].c-1,r20=c/a[i-20].c-1,v=a.slice(i-19,i+1).reduce((s,x)=>s+(x.v||0),0)/20,vr=v?(a[i].v||0)/v:1,rs=[];for(let j=i-19;j<=i;j++)if(j>0)rs.push(a[j].c/a[j-1].c-1);let av=rs.reduce((s,x)=>s+x,0)/rs.length,sd=Math.sqrt(rs.reduce((s,x)=>s+(x-av)**2,0)/rs.length),q=50;q+=c>m5?7:-7;q+=m5>m20?10:-10;q+=Math.max(-10,Math.min(10,r5*100));q+=Math.max(-12,Math.min(12,r20*60));q+=Math.max(-5,Math.min(5,(vr-1)*5));q-=Math.min(10,sd*180);return Math.max(0,Math.min(100,q))}function st(r){if(!r.length)return{n:0,w:0,a:0,dd:0};let eq=1,pk=1,dd=0;r.forEach(x=>{eq*=1+x;pk=Math.max(pk,eq);dd=Math.min(dd,eq/pk-1)});return{n:r.length,w:r.filter(x=>x>0).length/r.length,a:r.reduce((s,x)=>s+x,0)/r.length,dd}}const pc=x=>(x*100).toFixed(2)+'%';function validate(){let tr=[],te=[],per=[],trades=[];P.forEach(p=>{let a=series(p[0]);if(a.length<80)return;let cut=Math.floor(a.length*.7),x=[],y=[];for(let i=20;i<a.length-HOLD;i+=HOLD){let q=score(a,i);if(q<TH)continue;let r=a[i+HOLD].c/a[i].c-1-COST;if(i<cut)x.push(r);else{y.push(r);trades.push({code:p[0],name:p[1],date:a[i].d,r:r,score:q,entry:a[i].c,path:a.slice(i+1,i+HOLD+1).map(z=>z.c)})}}tr.push(...x);te.push(...y);per.push([p,st(y)]) });lastValidation={trades:trades,per:per};let A=st(tr),B=st(te),used=per.filter(x=>x[1].n),pos=used.filter(x=>x[1].a>0).length,h='<h3>後 30% 樣本外</h3><div class="grid"><div><b>'+B.n+'</b><small>交易樣本</small></div><div><b>'+pc(B.w)+'</b><small>勝率</small></div><div><b>'+pc(B.a)+'</b><small>平均每筆</small></div><div><b>'+pos+' / '+used.length+'</b><small>正期望股票</small></div><div><b>'+pc(B.dd)+'</b><small>最大回撤</small></div></div><h3>前70%形成期</h3><p>'+A.n+'筆｜勝率 '+pc(A.w)+'｜平均 '+pc(A.a)+'</p><h3>樣本外各股</h3>';used.sort((a,b)=>b[1].a-a[1].a).forEach(x=>h+='<div class="mini"><b>'+x[0][1]+' '+x[0][0]+'</b><span>'+x[1].n+'筆｜勝 '+pc(x[1].w)+'｜均 '+pc(x[1].a)+'｜DD '+pc(x[1].dd)+'</span></div>');h+='<p class="foot">固定：≥65分｜持有20交易日｜每筆扣0.585%。歷史結果不保證未來。</p>';$('result').innerHTML=h}function stability(){if(!lastValidation||!lastValidation.trades.length){$('stable').innerHTML='請先按「執行固定規則驗證」。';return}let t=lastValidation.trades,months={};t.forEach(x=>{let m=x.date.slice(0,7);(months[m]||(months[m]=[])).push(x.r)});let ms=Object.entries(months).sort((a,b)=>a[0].localeCompare(b[0])).map(([m,r])=>[m,st(r)]),pm=ms.filter(x=>x[1].a>0).length;let stock={};t.forEach(x=>(stock[x.code]||(stock[x.code]={name:x.name,r:[]})).r.push(x.r));let ss=Object.entries(stock).map(([c,o])=>[c,o.name,st(o.r)]).sort((a,b)=>b[2].a-a[2].a),pos=ss.filter(x=>x[2].a>0).length;let total=t.reduce((s,x)=>s+x.r,0),top=ss.slice(0,5).reduce((s,x)=>s+x[2].a*x[2].n,0),conc=total>0?top/total:0;let h='<div class="grid"><div><b>'+pm+' / '+ms.length+'</b><small>正報酬月份</small></div><div><b>'+pos+' / '+ss.length+'</b><small>正期望股票</small></div><div><b>'+pc(conc)+'</b><small>前5股報酬貢獻度*</small></div><div><b>'+t.length+'</b><small>樣本外交易</small></div></div><h3>樣本外月份</h3>';ms.forEach(x=>h+='<div class="mini"><b>'+x[0]+'</b><span>'+x[1].n+'筆｜勝 '+pc(x[1].w)+'｜均 '+pc(x[1].a)+'</span></div>');h+='<h3>報酬集中度：前 5 檔</h3>';ss.slice(0,5).forEach(x=>h+='<div class="mini"><b>'+x[1]+' '+x[0]+'</b><span>'+x[2].n+'筆｜均 '+pc(x[2].a)+'</span></div>');h+='<p class="foot">*前5股報酬貢獻度是簡化集中度指標，不是投資組合權重。月份樣本很少時不可單獨解讀。規則仍固定為 ≥65 分、持有20交易日、成本0.585%。</p>';$('stable').innerHTML=h}
 function riskCompare(){
  if(!lastValidation||!lastValidation.trades.length){$('riskResult').innerHTML='請先按「執行固定規則驗證」。';return}
- let base=lastValidation.trades.slice();
- function stopRet(t){
-   let hit=false;
-   for(let p of (t.path||[])){if(p/t.entry-1<=-.10){hit=true;break}}
-   return hit?(-.10-COST):t.r
+ const base=lastValidation.trades.slice();
+ function stopRet(t,sl){
+   for(let p of (t.path||[]))if(p/t.entry-1<=-sl)return -sl-COST;
+   return t.r
  }
- let byDate={};base.forEach(t=>(byDate[t.date]||(byDate[t.date]=[])).push(t));
- let controlled=[];
- Object.keys(byDate).sort().forEach(d=>{
-   let chosen=byDate[d].slice().sort((a,b)=>b.score-a.score).slice(0,5);
-   chosen.forEach(t=>controlled.push({...t,rr:stopRet(t)}))
- });
- let A=st(base.map(t=>t.r)),B=st(controlled.map(t=>t.rr));
- let stopHits=controlled.filter(t=>t.rr<=(-.10-COST+1e-9)).length;
- let stock={};controlled.forEach(t=>(stock[t.code]||(stock[t.code]=[])).push(t.rr));
- let ss=Object.entries(stock).map(([c,r])=>[c,st(r)]).sort((a,b)=>b[1].a-a[1].a);
- let total=controlled.reduce((s,t)=>s+t.rr,0),top=ss.slice(0,5).reduce((s,x)=>s+x[1].a*x[1].n,0),conc=total>0?top/total:0;
- let h='<h3>原策略 vs 風控策略</h3><div class="compare"><div><h4>原策略</h4><b>'+A.n+' 筆</b><span>勝率 '+pc(A.w)+'</span><span>平均 '+pc(A.a)+'</span><span>最大回撤 '+pc(A.dd)+'</span></div><div><h4>風控策略</h4><b>'+B.n+' 筆</b><span>勝率 '+pc(B.w)+'</span><span>平均 '+pc(B.a)+'</span><span>最大回撤 '+pc(B.dd)+'</span></div></div>';
- h+='<div class="grid"><div><b>'+stopHits+'</b><small>觸發 -10% 停損</small></div><div><b>'+pc(conc)+'</b><small>風控後前5股貢獻度</small></div><div><b>'+pc(B.dd-A.dd)+'</b><small>回撤改善幅度*</small></div><div><b>'+pc(B.a-A.a)+'</b><small>平均報酬差異</small></div></div>';
- h+='<p class="foot">風控版本固定：同一訊號日最多 5 檔，依原 Strategy 分數由高到低選取；持有期間若收盤價相對進場價跌至 -10% 或更低，簡化為 -10% 出場，再扣 0.585% 成本。*回撤改善為兩種簡化交易序列回撤之差，並非真實帳戶淨值回撤。這是歷史模擬，不代表未來績效。</p>';
+ function portfolioDD(ts,sl){
+   let events={};
+   ts.forEach(t=>{
+     let d=t.date, r=sl?stopRet(t,sl):t.r;
+     (events[d]||(events[d]=[])).push(r)
+   });
+   let eq=1,peak=1,dd=0;
+   Object.keys(events).sort().forEach(d=>{
+     let rs=events[d],day=rs.reduce((a,b)=>a+b,0)/rs.length;
+     eq*=1+day; peak=Math.max(peak,eq); dd=Math.min(dd,eq/peak-1)
+   });
+   return dd
+ }
+ function run(sl){
+   let byDate={};base.forEach(t=>(byDate[t.date]||(byDate[t.date]=[])).push(t));
+   let arr=[];
+   Object.keys(byDate).sort().forEach(d=>{
+     byDate[d].slice().sort((a,b)=>b.score-a.score).slice(0,5).forEach(t=>arr.push({...t,rr:stopRet(t,sl)}))
+   });
+   let s=st(arr.map(x=>x.rr));
+   return {sl,n:s.n,w:s.w,a:s.a,seq:s.dd,pdd:portfolioDD(arr,sl),hits:arr.filter(x=>x.rr<=(-sl-COST+1e-9)).length}
+ }
+ let baseS=st(base.map(t=>t.r)), baseP=portfolioDD(base,0);
+ let rows=[.08,.10,.12,.15].map(run);
+ let h='<h3>固定風控強度比較</h3><div class="riskTable"><div class="rh">方案</div><div class="rh">筆數</div><div class="rh">勝率</div><div class="rh">平均</div><div class="rh">日期型回撤</div>';
+ h+='<div>原策略</div><div>'+baseS.n+'</div><div>'+pc(baseS.w)+'</div><div>'+pc(baseS.a)+'</div><div>'+pc(baseP)+'</div>';
+ rows.forEach(x=>{h+='<div>-'+Math.round(x.sl*100)+'%</div><div>'+x.n+'</div><div>'+pc(x.w)+'</div><div>'+pc(x.a)+'</div><div>'+pc(x.pdd)+'</div>'});
+ h+='</div>';
+ h+='<h3>停損觸發與簡化序列回撤</h3><div class="grid">';
+ rows.forEach(x=>{h+='<div><b>-'+Math.round(x.sl*100)+'%</b><small>'+x.hits+' 次停損｜序列DD '+pc(x.seq)+'</small></div>'});
+ h+='</div><p class="foot">四個停損門檻在看結果前已固定列出，目的為穩健性比較，不是挑最好看的參數。每個訊號日最多 5 檔、依 Strategy 分數排序。日期型回撤把同日交易先等權平均，再按日期累積成簡化淨值曲線；仍未完整模擬資金占用、重疊持倉、盤中成交、滑價、股利與實際稅費，因此不是券商帳戶真實回撤。歷史結果不保證未來績效。</p>';
  $('riskResult').innerHTML=h
 }
  $('start').onclick=()=>go(false);$('retry').onclick=()=>go(true);$('stop').onclick=()=>{stop=true;if(ctl)ctl.abort()};$('validate').onclick=validate;$('stability').onclick=stability;$('risk').onclick=riskCompare;draw();load();})();
