@@ -47,7 +47,7 @@ async function portfolioSim(stopLoss){
  const initial=100000,maxPos=5;let cash=initial,pos=[],curve=[],done=[],buys=0;
  function nd(s){let a=String(s||'').trim().replace(/\./g,'/').replace(/-/g,'/').split('/');if(a.length<3)return'';let y=+a[0],m=+a[1],d=+a[2];if(y<1911)y+=1911;return y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0')}
  if(!DB)await openDB();let hist={};P.forEach(p=>hist[p[0]]=[]);let mo=0,rn=0;
- for(let p of P)for(let m of M){let r=await idbGet(p[0]+'_'+m);if(r&&r.length){mo++;for(let x of r){let d=nd(x.d),c=+x.c;if(d&&c>0){hist[p[0]].push({d,c});rn++}}}}
+ for(let p of P)for(let m of M){let r=await idbGet(p[0]+'_'+m);if(r&&r.length){mo++;for(let x of r){let d=nd(Array.isArray(x)?x[0]:x.d),c=+(Array.isArray(x)?x[1]:x.c);if(d&&c>0){hist[p[0]].push({d,c});rn++}}}}
  let px={},ds=new Set(),stocks=0;for(let [code,r] of Object.entries(hist)){if(!r.length)continue;stocks++;let dm=new Map(r.map(x=>[x.d,x.c]));for(let [d,c] of dm){(px[d]||(px[d]={}))[code]=c;ds.add(d)}}let dates=[...ds].sort(),sig={};for(let t of lastValidation.trades){let d=nd(t.date);if(d)(sig[d]||(sig[d]=[])).push(t)}
  const eq=d=>cash+pos.reduce((z,p)=>z+((px[d]||{})[p.code]||p.last)*p.shares,0);
  for(let d of dates){let td=px[d]||{};for(let i=pos.length-1;i>=0;i--){let p=pos[i],pr=td[p.code];if(!pr)continue;p.last=pr;p.days++;let st=stopLoss&&pr/p.entry-1<=-stopLoss;if(st||p.days>=HOLD){let g=p.shares*pr;cash+=g-g*COST;done.push({r:pr/p.entry-1-COST*2,stop:!!st});pos.splice(i,1)}}for(let t of (sig[d]||[]).sort((a,b)=>b.score-a.score)){if(pos.length>=maxPos)break;if(pos.some(p=>p.code===t.code))continue;let pr=td[t.code]||+t.entry,b=Math.min(cash,eq(d)/maxPos),sh=Math.floor(b/pr);if(sh<1)continue;let c=sh*pr,f=c*COST;if(c+f>cash)continue;cash-=c+f;buys++;pos.push({code:t.code,entry:pr,last:pr,shares:sh,days:0})}curve.push({d,e:eq(d)})}
@@ -59,7 +59,7 @@ async function portfolioCompare(){
  if(!lastValidation||!lastValidation.trades.length){$('portfolioResult').innerHTML='請先執行第二步固定規則驗證。';return}
  $('portfolioResult').innerHTML='正在直接讀取 IndexedDB 永久行情…';let a=await portfolioSim(0),b=await portfolioSim(.10);
  function card(n,x){return '<div><h4>'+n+'</h4><b>NT$ '+Math.round(x.final).toLocaleString()+'</b><span>總報酬 '+pc(x.ret)+'</span><span>最大回撤 '+pc(x.dd)+'</span><span>'+x.n+'筆｜勝率 '+pc(x.w)+'</span><span>停損 '+x.stops+'次</span><span>訊號 '+x.signalCount+'｜實際買進 '+x.buyCount+'</span><span>行情日 '+x.marketDays+'｜有行情 '+x.stocksWithData+'/50</span><span>DB月份 '+x.monthObjects+'/1800｜有效日列 '+x.rowCount+'</span></div>'}
- $('portfolioResult').innerHTML='<h3>NT$100,000 資金型模擬</h3><div class="compare">'+card('無停損',a)+card('固定 -10%',b)+'</div><p class="foot">v3.8.3 第五步直接讀取 IndexedDB，不依賴記憶體 D。策略參數不變；歷史模擬不代表未來績效。</p>'
+ $('portfolioResult').innerHTML='<h3>NT$100,000 資金型模擬</h3><div class="compare">'+card('無停損',a)+card('固定 -10%',b)+'</div><p class="foot">v3.8.5 已依實際 IndexedDB 格式 [日期, 收盤價, 成交量] 解析。策略參數不變；歷史模擬不代表未來績效。</p>'
 }
 async function inspectIndexedDB(){
  const el=$('inspectResult');
