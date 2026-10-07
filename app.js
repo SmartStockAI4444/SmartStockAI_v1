@@ -46,64 +46,64 @@ function riskCompare(){
 function portfolioSim(stopLoss){
  if(!lastValidation||!lastValidation.trades.length)return null;
  const initial=100000,maxPos=5;
- let cash=initial, positions=[], curve=[], tradesDone=[];
+ let cash=initial,positions=[],curve=[],tradesDone=[],signalCount=0,buyCount=0;
+ function normDate(s){
+   if(!s)return '';
+   let a=String(s).trim().replace(/\./g,'/').replace(/-/g,'/').split('/');
+   if(a.length<3)return String(s);
+   let y=parseInt(a[0]),m=parseInt(a[1]),d=parseInt(a[2]);
+   if(y<1911)y+=1911;
+   return y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0')
+ }
  let signals={};
- lastValidation.trades.forEach(t=>(signals[t.date]||(signals[t.date]=[])).push(t));
- let dates=[...new Set(Object.values(D).flat().map(x=>x.d))].sort();
+ lastValidation.trades.forEach(t=>{let d=normDate(t.date);(signals[d]||(signals[d]=[])).push(t);signalCount++});
  let px={};
- Object.keys(D).forEach(k=>D[k].forEach(x=>{(px[x.d]||(px[x.d]={}))[k.split('_')[0]]=x.c}));
+ Object.keys(D).forEach(k=>D[k].forEach(x=>{let d=normDate(x.d);(px[d]||(px[d]={}))[k.split('_')[0]]=x.c}));
+ let dates=Object.keys(px).sort();
  function equity(d){return cash+positions.reduce((s,p)=>s+((px[d]&&px[d][p.code])||p.last||p.entry)*p.shares,0)}
  for(let d of dates){
    let today=px[d]||{};
-   // update and exits first
    for(let i=positions.length-1;i>=0;i--){
-     let p=positions[i], price=today[p.code];
+     let p=positions[i],price=today[p.code];
      if(price)p.last=price;
      if(!price)continue;
      p.days++;
-     let stop=stopLoss && price/p.entry-1<=-stopLoss;
-     let time=p.days>=HOLD;
+     let stop=stopLoss&&price/p.entry-1<=-stopLoss,time=p.days>=HOLD;
      if(stop||time){
-       let gross=p.shares*price, fee=gross*COST;
+       let gross=p.shares*price,fee=gross*COST;
        cash+=gross-fee;
        tradesDone.push({r:(price/p.entry-1)-COST*2,reason:stop?'stop':'time'});
        positions.splice(i,1)
      }
    }
-   // new signals, highest score first; don't duplicate held stock
    let sig=(signals[d]||[]).slice().sort((a,b)=>b.score-a.score);
    for(let t of sig){
      if(positions.length>=maxPos)break;
      if(positions.some(p=>p.code===t.code))continue;
      let price=today[t.code]||t.entry;
      if(!price)continue;
-     let slots=maxPos-positions.length;
-     let budget=Math.min(cash, equity(d)/maxPos);
-     let shares=Math.floor(budget/price);
+     let budget=Math.min(cash,equity(d)/maxPos),shares=Math.floor(budget/price);
      if(shares<1)continue;
-     let cost=shares*price, fee=cost*COST;
+     let cost=shares*price,fee=cost*COST;
      if(cost+fee>cash)continue;
-     cash-=cost+fee;
+     cash-=cost+fee;buyCount++;
      positions.push({code:t.code,entry:price,last:price,shares,days:0})
    }
    curve.push({d,e:equity(d)})
  }
- // liquidate at final known prices
  if(curve.length){
    let d=curve[curve.length-1].d,today=px[d]||{};
    for(let p of positions){let price=today[p.code]||p.last||p.entry,gross=p.shares*price;cash+=gross-gross*COST;tradesDone.push({r:(price/p.entry-1)-COST*2,reason:'end'})}
    positions=[];curve[curve.length-1].e=cash
  }
- let peak=initial,dd=0;
- curve.forEach(x=>{peak=Math.max(peak,x.e);dd=Math.min(dd,x.e/peak-1)});
- let ret=cash/initial-1;
+ let peak=initial,dd=0;curve.forEach(x=>{peak=Math.max(peak,x.e);dd=Math.min(dd,x.e/peak-1)});
  let wins=tradesDone.filter(x=>x.r>0).length;
- return {initial,final:cash,ret,dd,n:tradesDone.length,w:tradesDone.length?wins/tradesDone.length:0,stops:tradesDone.filter(x=>x.reason==='stop').length}
+ return {initial,final:cash,ret:cash/initial-1,dd,n:tradesDone.length,w:tradesDone.length?wins/tradesDone.length:0,stops:tradesDone.filter(x=>x.reason==='stop').length,signalCount,buyCount,marketDays:dates.length}
 }
 function portfolioCompare(){
  if(!lastValidation||!lastValidation.trades.length){$('portfolioResult').innerHTML='請先執行第二步固定規則驗證。';return}
  let a=portfolioSim(0),b=portfolioSim(.10);
- function card(name,x){return '<div><h4>'+name+'</h4><b>NT$ '+Math.round(x.final).toLocaleString()+'</b><span>總報酬 '+pc(x.ret)+'</span><span>最大回撤 '+pc(x.dd)+'</span><span>'+x.n+' 筆｜勝率 '+pc(x.w)+'</span><span>停損 '+x.stops+' 次</span></div>'}
+ function card(name,x){return '<div><h4>'+name+'</h4><b>NT$ '+Math.round(x.final).toLocaleString()+'</b><span>總報酬 '+pc(x.ret)+'</span><span>最大回撤 '+pc(x.dd)+'</span><span>'+x.n+' 筆｜勝率 '+pc(x.w)+'</span><span>停損 '+x.stops+' 次</span><span>訊號 '+x.signalCount+'｜實際買進 '+x.buyCount+'</span><span>行情日 '+x.marketDays+'</span></div>'}
  $('portfolioResult').innerHTML='<h3>NT$100,000 資金型模擬</h3><div class="compare">'+card('無停損',a)+card('固定 -10%',b)+'</div><p class="foot">規則預先固定：初始資金 NT$100,000、最多同時5檔、每檔目標約總資產20%、同日訊號依 Strategy 分數排序；先處理當日出場再進場。持有最多20個交易日；-10% 版本以每日收盤價判斷停損。交易成本沿用0.585%的簡化設定。此模型比前版更接近資金占用與重疊持倉，但仍不含盤中成交、滑價、零股細節、股利及完整稅費，歷史結果不保證未來績效。</p>'
 }
 
