@@ -61,4 +61,36 @@ async function portfolioCompare(){
  function card(n,x){return '<div><h4>'+n+'</h4><b>NT$ '+Math.round(x.final).toLocaleString()+'</b><span>總報酬 '+pc(x.ret)+'</span><span>最大回撤 '+pc(x.dd)+'</span><span>'+x.n+'筆｜勝率 '+pc(x.w)+'</span><span>停損 '+x.stops+'次</span><span>訊號 '+x.signalCount+'｜實際買進 '+x.buyCount+'</span><span>行情日 '+x.marketDays+'｜有行情 '+x.stocksWithData+'/50</span><span>DB月份 '+x.monthObjects+'/1800｜有效日列 '+x.rowCount+'</span></div>'}
  $('portfolioResult').innerHTML='<h3>NT$100,000 資金型模擬</h3><div class="compare">'+card('無停損',a)+card('固定 -10%',b)+'</div><p class="foot">v3.8.3 第五步直接讀取 IndexedDB，不依賴記憶體 D。策略參數不變；歷史模擬不代表未來績效。</p>'
 }
- $('start').onclick=()=>go(false);$('retry').onclick=()=>go(true);$('stop').onclick=()=>{stop=true;if(ctl)ctl.abort()};$('validate').onclick=validate;$('stability').onclick=stability;$('risk').onclick=riskCompare;$('portfolio').onclick=portfolioCompare;draw();load();})();
+async function inspectIndexedDB(){
+ const el=$('inspectResult');
+ el.textContent='正在讀取 IndexedDB 原始資料…';
+ try{
+  if(!DB)await openDB();
+  let found=null,keyUsed='';
+  // Prefer TSMC, scan available 36 month keys.
+  for(let m of M){
+   let k='2330_'+m, v=await idbGet(k);
+   if(v!=null){found=v;keyUsed=k;break}
+  }
+  if(found==null){el.textContent='找不到台積電 IndexedDB 月份資料。';return}
+  const type=Array.isArray(found)?'Array':typeof found;
+  const keys=(found&&typeof found==='object'&&!Array.isArray(found))?Object.keys(found):[];
+  let sample=Array.isArray(found)?found[0]:found;
+  let sampleKeys=(sample&&typeof sample==='object')?Object.keys(sample):[];
+  let preview='';
+  try{preview=JSON.stringify(sample,null,2)}catch(e){preview=String(sample)}
+  if(preview.length>1800)preview=preview.slice(0,1800)+'…';
+  el.innerHTML='<h3>IndexedDB 原始格式診斷</h3>'+
+   '<p>Key：<b>'+keyUsed+'</b></p>'+
+   '<p>最外層型態：<b>'+type+'</b>'+(Array.isArray(found)?'｜長度 <b>'+found.length+'</b>':'')+'</p>'+
+   (keys.length?'<p>最外層欄位：'+keys.join(', ')+'</p>':'')+
+   '<p>第一筆欄位：<b>'+(sampleKeys.join(', ')||'無')+'</b></p>'+
+   '<pre style="white-space:pre-wrap;word-break:break-all;font-size:12px">'+
+   preview.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+
+   '</pre><p class="foot">請把這一區截圖給我；下一版會依照實際欄位一次修正第五步解析器。</p>';
+ }catch(e){
+  el.textContent='診斷失敗：'+(e&&e.message?e.message:String(e));
+ }
+}
+
+ $('start').onclick=()=>go(false);$('retry').onclick=()=>go(true);$('stop').onclick=()=>{stop=true;if(ctl)ctl.abort()};$('validate').onclick=validate;$('stability').onclick=stability;$('risk').onclick=riskCompare;$('portfolio').onclick=portfolioCompare;$('inspectDB').onclick=inspectIndexedDB;draw();load();})();
