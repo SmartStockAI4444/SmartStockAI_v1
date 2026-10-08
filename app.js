@@ -94,116 +94,167 @@ async function inspectIndexedDB(){
 }
 
 const PAPER_KEY='ssa39paper';
-function paperLoad(){try{return JSON.parse(localStorage.getItem(PAPER_KEY)||'null')}catch(e){return null}}
+const PAPER_FEE=COST; // Compatibility: legacy account charged 0.585% on each fill.
+let paperBusy=false;
+const STOCK_NAME=Object.fromEntries(P.map(([c,n])=>[c,n]));
+function paperEsc(x){return String(x??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function paperMoney(x){return 'NT$ '+Math.round(Number(x)||0).toLocaleString('en-US')}
+function paperPct(x){return (100*(Number(x)||0)).toFixed(2)+'%'}
+function twDate(){let x=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());return x}
+function paperNew(){let d=twDate();return{version:'4.0',started:d,lastDate:null,
+ base:{cash:100000,pos:[],trades:[],equity:[{d,e:100000}],pending:{date:null,buys:[],sells:[]},log:[]},
+ stop:{cash:100000,pos:[],trades:[],equity:[{d,e:100000}],pending:{date:null,buys:[],sells:[]},log:[]}}}
 function paperSave(x){localStorage.setItem(PAPER_KEY,JSON.stringify(x))}
-function twDate(){
- return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())
+function paperLoad(){let p=null;try{p=JSON.parse(localStorage.getItem(PAPER_KEY)||'null')}catch(e){}if(!p)return null;
+ // In-place, non-destructive migration; preserve both already-open v3.9.4 accounts.
+ if(!p.paperV4){
+  for(let kind of ['base','stop']){
+   const a=p[kind];if(!a)continue;
+   if(!Array.isArray(a.equity))a.equity=[];
+   if(!Array.isArray(a.trades))a.trades=[];
+   if(!Array.isArray(a.pos))a.pos=[];
+   a.pending={date:null,buys:[],sells:[]};
+   a.log=[];
+   for(let t of a.trades)a.log.push({date:t.out||p.lastDate||'',type:'sell',code:t.code,shares:t.shares||null,price:t.exit||null,reason:t.reason||'舊版交易',legacy:true});
+   for(let x of a.pos){x.legacy=true;x.buyFee=Number(x.entry||0)*Number(x.shares||0)*PAPER_FEE;
+    a.log.push({date:x.in||p.lastDate||'',type:'buy',code:x.code,shares:x.shares,price:x.entry,reason:'v3.9.4 已持有（承接）',legacy:true});}
+  }
+  p.paperV4=true;p.version='4.0';paperSave(p);
+ }
+ return p;
 }
-function paperNew(){
- let d=twDate();
- return {version:'3.9',started:d,lastDate:null,
-  base:{cash:100000,pos:[],trades:[],equity:[{d,e:100000}]},
-  stop:{cash:100000,pos:[],trades:[],equity:[{d,e:100000}]}}
-}
-function paperDD(eq){let p=0,dd=0;for(let x of eq){p=Math.max(p,x.e);if(p)dd=Math.min(dd,x.e/p-1)}return dd}
-function paperAccountCard(n,a){
- let last=a.equity[a.equity.length-1]?.e||a.cash,w=a.trades.filter(t=>t.r>0).length;
- return '<div><h4>'+n+'</h4><b>NT$ '+Math.round(last).toLocaleString()+'</b>'+
- '<span>累積報酬 '+pc(last/100000-1)+'</span><span>最大回撤 '+pc(paperDD(a.equity))+'</span>'+
- '<span>持股 '+a.pos.length+' 檔｜已完成 '+a.trades.length+' 筆</span>'+
- '<span>已完成勝率 '+(a.trades.length?pc(w/a.trades.length):'—')+'</span></div>'
-}
+function paperDD(eq){let peak=100000,dd=0;for(let x of eq){peak=Math.max(peak,x.e);if(peak>0)dd=Math.min(dd,x.e/peak-1)}return dd}
+function paperAssets(a){let stockValue=a.pos.reduce((s,x)=>s+Number(x.last||x.entry)*x.shares,0);return {cash:a.cash,stockValue,equity:a.cash+stockValue}}
+function paperAccountCard(name,a){let z=paperAssets(a),n=a.trades.length,w=a.trades.filter(x=>x.r>0).length;
+ return '<div class="accountSummary"><h4>'+name+'</h4><b>'+paperMoney(z.equity)+'</b>'+
+ '<span>現金 '+paperMoney(z.cash)+'</span><span>持股市值 '+paperMoney(z.stockValue)+'</span>'+
+ '<span>總報酬 '+paperPct(z.equity/100000-1)+'</span><span>最大回撤 '+paperPct(paperDD(a.equity))+'</span>'+
+ '<span>持股 '+a.pos.length+' 檔｜已完成 '+n+' 筆</span><span>已完成勝率 '+(n?paperPct(w/n):'—')+'</span>'+
+ '<span>下次待成交：買進候選 '+a.pending.buys.length+' 檔、賣出 '+a.pending.sells.length+' 檔</span></div>'}
+function paperHoldRows(a){if(!a.pos.length)return '<p class="foot">目前沒有持股。</p>';
+ let h='<div class="tableScroll"><table class="paperTable"><thead><tr><th>股票</th><th>買進日</th><th>股數</th><th>買進</th><th>最新收盤</th><th>未實現損益</th><th>持有日數</th></tr></thead><tbody>';
+ for(let x of a.pos){let pnl=x.shares*(Number(x.last||x.entry)-x.entry);h+='<tr><td>'+paperEsc(STOCK_NAME[x.code]||x.code)+' '+paperEsc(x.code)+(x.legacy?' <small>承接</small>':'')+'</td><td>'+paperEsc(x.in||'—')+'</td><td>'+x.shares+'</td><td>'+Number(x.entry).toFixed(2)+'</td><td>'+Number(x.last||x.entry).toFixed(2)+'</td><td class="'+(pnl>=0?'gain':'loss')+'">'+paperMoney(pnl)+'</td><td>'+Number(x.days||0)+'</td></tr>'}
+ return h+'</tbody></table></div><p class="foot">未實現損益未扣除未來賣出成本；「承接」代表保留 v3.9.4 已有持股。</p>'}
+function paperLedger(a){let log=(a.log||[]).slice().sort((x,y)=>String(y.date).localeCompare(String(x.date))).slice(0,50);
+ if(!log.length)return '<p class="foot">尚無交易紀錄；有買進或賣出時會自動記錄。</p>';
+ let h='<div class="tableScroll"><table class="paperTable"><thead><tr><th>日期</th><th>動作</th><th>股票</th><th>股數</th><th>價格</th><th>備註</th></tr></thead><tbody>';
+ for(let x of log)h+='<tr><td>'+paperEsc(x.date)+'</td><td>'+ (x.type==='buy'?'買進':'賣出')+'</td><td>'+paperEsc(STOCK_NAME[x.code]||x.code)+' '+paperEsc(x.code)+'</td><td>'+paperEsc(x.shares??'—')+'</td><td>'+ (Number.isFinite(Number(x.price))?Number(x.price).toFixed(2):'—')+'</td><td>'+paperEsc(x.reason||'')+'</td></tr>';
+ return h+'</tbody></table></div><p class="foot">最多顯示最近50筆，完整交易紀錄包含於備份檔。</p>'}
+function paperChart(a){let eq=a.equity||[];
+ if(eq.length<2)return '<p class="foot">尚不足兩個更新日，暫無績效曲線。</p>';
+ let points=eq.map(x=>Number(x.e)||100000),lo=Math.min(...points),hi=Math.max(...points),range=hi-lo||1;
+ const pts=points.map((v,i)=>(8+i*344/Math.max(1,points.length-1)).toFixed(1)+','+(100-(v-lo)*85/range).toFixed(1)).join(' ');
+ return '<svg class="paperChart" viewBox="0 0 360 120" role="img" aria-label="帳戶歷史總資產走勢"><polyline points="'+pts+'" fill="none" stroke="#64c4fa" stroke-width="2.5" stroke-linejoin="round"/></svg><div class="paperDates">'+paperEsc(eq[0].d)+' → '+paperEsc(eq[eq.length-1].d)+'｜'+eq.length+' 個資產記錄</div>'}
 function paperRender(msg=''){
- let p=paperLoad(); if(!p){$('paperResult').innerHTML='尚未啟用紙上模擬。';return}
- $('paperResult').innerHTML=(msg?'<p style="overflow-wrap:anywhere;white-space:pre-wrap">'+String(msg).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</p>':'')+
- '<p>啟用日：<b>'+p.started+'</b>｜最後更新：<b>'+(p.lastDate||'尚未更新')+'</b></p>'+
+ let p=paperLoad();if(!p){$('paperResult').textContent='尚未啟用紙上模擬。';return}
+ $('paperResult').innerHTML=(msg?'<p class="statusText">'+paperEsc(msg)+'</p>':'')+
+ '<p>啟用日：<b>'+paperEsc(p.started)+'</b>｜最後更新：<b>'+paperEsc(p.lastDate||'尚未更新')+'</b></p>'+
  '<div class="compare">'+paperAccountCard('基準：無停損',p.base)+paperAccountCard('對照：固定 -10%',p.stop)+'</div>'+
- '<p class="foot">這是前瞻 paper trading。規則啟用後不以歷史資料回填績效；瀏覽器資料若被清除，紙上帳戶也會遺失。</p>'
+ '<h3>兩組持股明細</h3><h4>無停損</h4>'+paperHoldRows(p.base)+'<h4>固定 -10%</h4>'+paperHoldRows(p.stop)+
+ '<h3>買賣交易紀錄</h3><h4>無停損</h4>'+paperLedger(p.base)+'<h4>固定 -10%</h4>'+paperLedger(p.stop)+
+ '<h3>每日資產變化</h3><h4>無停損</h4>'+paperChart(p.base)+'<h4>固定 -10%</h4>'+paperChart(p.stop)+
+ '<p class="foot">v4.0：收盤後產生訊號，下一交易日以官方開盤價進行假設成交。-10%為收盤價觸發、下一交易日開盤價賣出，不保證能以-10%成交。' +
+ '沿用舊版每次買進／賣出各扣0.585%的費用設定（總計約1.17%，不是原先所稱往返0.585%）。未來新增交易不改費率，避免破壞帳戶連續性。' +
+ '若漏掉交易日，系統為避免倒填而暫停交易更新。歷史與紙上模擬皆不保證未來績效。</p>';
 }
-function paperInit(){let p=paperLoad();if(!p){p=paperNew();paperSave(p)}
- 
- paperRender('紙上模擬規則已鎖定。')}
+function paperInit(){let p=paperLoad();if(!p){p=paperNew();paperSave(p)}paperRender('紙上帳戶已啟用，原有持股與餘額保留。')}
+function paperBackup(){let p=paperLoad();if(!p){paperRender('尚未啟用帳戶，無資料可備份。');return}
+ const payload={format:'SmartStockAI-paper-v4',exportedAt:new Date().toISOString(),account:p};
+ const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),link=document.createElement('a');
+ link.href=url;link.download='SmartStockAI_紙上帳戶_'+twDate()+'.json';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);paperRender('已產生紙上帳戶 JSON 備份。')}
+async function paperRestore(ev){const f=ev.target.files&&ev.target.files[0];if(!f)return;
+ try{const obj=JSON.parse(await f.text());if(obj.format!=='SmartStockAI-paper-v4'||!obj.account||!obj.account.base||!obj.account.stop||!Array.isArray(obj.account.base.pos)||!Array.isArray(obj.account.stop.pos))throw Error('備份格式不符合 v4.0');
+ if(!confirm('匯入會覆蓋目前手機裡的兩個紙上模擬帳戶。確定要繼續嗎？'))return;
+ paperSave(obj.account);paperRender('已匯入備份，原有資料已由備份取代。');
+ }catch(e){paperRender('匯入失敗：'+String(e.message||e))}finally{ev.target.value=''}}
+// Reuse the same, proven one-stock × one-month TWSE fetch; 4th field is the official open.
 async function paperLatestHistory(code){
  if(!DB)await openDB();
- const now=new Date(),parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(now);
- const y=+parts.find(x=>x.type==='year').value,mo=+parts.find(x=>x.type==='month').value;
- const ym=String(y)+String(mo).padStart(2,'0')+'01';
- const prev=new Date(Date.UTC(y,mo-2,1));
- const pm=String(prev.getUTCFullYear())+String(prev.getUTCMonth()+1).padStart(2,'0')+'01';
- let rows=[],errors=[];
- // Existing IndexedDB provides the 20-day warm-up, without replaying old trades.
- for(let m of M){let x=await idbGet(code+'_'+m);if(Array.isArray(x))rows.push(...x)}
- // The current month is fetched afresh; do not pretend stale cache is a successful live update.
- for(let month of [ym]){
-  let result=null,err='';
-  for(let a=1;a<=3;a++){
-   const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),12000);
-   try{
-    const url='https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date='+month+'&stockNo='+code+'&response=json&_='+Date.now();
-    const r=await fetch(url,{cache:'no-store',signal:ctl.signal});
-    if(!r.ok)throw Error('HTTP '+r.status);
-    const j=await r.json();
-    if(j.stat!=='OK')throw Error('TWSE '+String(j.stat));
-    result=(j.data||[]).map(q=>[dk(q[0]),n(q[6]),n(q[1])]).filter(q=>q[1]>0);
-    if(!result.length)throw Error('空月份');
-    break;
-   }catch(e){err=e.message||String(e);if(a<3)await sleep(a*700)}
-   finally{clearTimeout(timer)}
+ let parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+ let y=+parts.find(x=>x.type==='year').value,m=+parts.find(x=>x.type==='month').value,ym=String(y)+String(m).padStart(2,'0')+'01';
+ let all=[],err='';for(let month of M){let x=await idbGet(code+'_'+month);if(Array.isArray(x))all.push(...x)}
+ let fresh=null;
+ for(let attempt=1;attempt<=3;attempt++){
+  let ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),12000);
+  try{let r=await fetch('https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date='+ym+'&stockNo='+code+'&response=json&_='+Date.now(),{cache:'no-store',signal:ctl.signal});
+   if(!r.ok)throw Error('HTTP '+r.status);let j=await r.json();if(j.stat!=='OK')throw Error('TWSE '+j.stat);
+   fresh=(j.data||[]).map(q=>[dk(q[0]),n(q[6]),n(q[1]),n(q[3])]).filter(q=>q[1]>0);if(!fresh.length)throw Error('空月份');break;
+  }catch(e){err=e.message||String(e);if(attempt<3)await sleep(attempt*700)}finally{clearTimeout(timer)}
+ }
+ if(fresh){all.push(...fresh);await idbPut(code+'_'+ym,fresh)}
+ let daymap=new Map();for(let x of all){let d=Array.isArray(x)?x[0]:x.d,c=+(Array.isArray(x)?x[1]:x.c),v=+(Array.isArray(x)?x[2]:x.v),op=+(Array.isArray(x)?x[3]:x.o);
+ if(/^\d{4}-\d\d-\d\d$/.test(d)&&c>0){let prev=daymap.get(d);daymap.set(d,[d,c,Number.isFinite(v)?v:0,op>0?op:(prev?prev[3]:0)])}}
+ return {rows:[...daymap.values()].sort((a,b)=>a[0].localeCompare(b[0])),error:fresh?'':err};
+}
+// Daily event order: prior-close orders at next open; new signal at this close, never same-day fill.
+function paperApplyDay(a,date,prices,opens,signals,stopEnabled){
+ let actions={buys:0,sells:0,missingOpen:0};
+ let pending=a.pending||{date:null,buys:[],sells:[]};
+ let sellCarry=[];
+ if(pending.date&&pending.date<date){
+  for(let code of pending.sells){let i=a.pos.findIndex(x=>x.code===code);if(i<0)continue;let x=a.pos[i],op=opens[code];
+   if(!(op>0)){actions.missingOpen++;sellCarry.push(code);continue}
+   let gross=x.shares*op,fee=gross*PAPER_FEE;a.cash+=gross-fee;
+   let pnl=gross-fee-x.shares*x.entry-(x.buyFee||0);
+   a.trades.push({code,in:x.in,out:date,entry:x.entry,exit:op,shares:x.shares,fee,pnl,r:pnl/(x.shares*x.entry),reason:x.queuedReason||'time'});
+   a.log.push({date,type:'sell',code,shares:x.shares,price:op,reason:x.queuedReason==='stop'?'前日收盤觸發停損': '持有20日到期'});
+   a.pos.splice(i,1);actions.sells++;
   }
-  if(result){rows.push(...result);await idbPut(code+'_'+month,result)}
-  else errors.push(month+': '+err);
+  for(let s of pending.buys){if(a.pos.length>=5)break;if(a.pos.some(x=>x.code===s.code))continue;let op=opens[s.code];if(!(op>0)){actions.missingOpen++;continue}
+   let val=a.cash+a.pos.reduce((t,x)=>t+(opens[x.code]||x.last||x.entry)*x.shares,0);
+   let budget=Math.min(a.cash,val/5);let qty=Math.floor(budget/(op*(1+PAPER_FEE)));
+   if(qty<1)continue;let principal=qty*op,fee=principal*PAPER_FEE;
+   if(principal+fee>a.cash)continue;a.cash-=principal+fee;
+   a.pos.push({code:s.code,entry:op,last:op,shares:qty,days:0,in:date,score:s.score,buyFee:fee});
+   a.log.push({date,type:'buy',code:s.code,shares:qty,price:op,reason:'前一交易日收盤訊號'});
+   actions.buys++;
+  }
  }
- let map=new Map();
- for(let x of rows){let d=Array.isArray(x)?x[0]:x.d,c=+(Array.isArray(x)?x[1]:x.c),v=+(Array.isArray(x)?x[2]:x.v);if(/^\d{4}-\d\d-\d\d$/.test(d)&&c>0)map.set(d,[d,c,Number.isFinite(v)?v:0])}
- return {rows:[...map.values()].sort((a,b)=>a[0].localeCompare(b[0])),errors};
+ for(let x of a.pos){if(prices[x.code]>0)x.last=prices[x.code];if(x.in!==date)x.days=Number(x.days||0)+1;}
+ let sell=sellCarry.slice();for(let x of a.pos){if(sell.includes(x.code))continue;if(stopEnabled&&x.last/x.entry-1<=-.10){sell.push(x.code);x.queuedReason='stop'}else if(x.days>=20){sell.push(x.code);x.queuedReason='time'}}
+ a.pending={date,buys:signals.map(s=>({code:s.code,score:s.score})),sells:sell};
+ let val=paperAssets(a).equity;a.equity.push({d:date,e:val});
+ return actions;
 }
-function paperStepAccount(a,stopLoss,date,prices,signals){
- for(let i=a.pos.length-1;i>=0;i--){let p=a.pos[i],pr=prices[p.code];if(!pr)continue;p.last=pr;p.days++;let st=stopLoss&&pr/p.entry-1<=-stopLoss;if(st||p.days>=HOLD){let g=p.shares*pr;a.cash+=g-g*COST;a.trades.push({code:p.code,in:p.in,out:date,entry:p.entry,exit:pr,r:pr/p.entry-1-COST*2,reason:st?'stop':'time'});a.pos.splice(i,1)}}
- let eq=()=>a.cash+a.pos.reduce((z,p)=>z+(prices[p.code]||p.last)*p.shares,0);
- for(let s of signals){if(a.pos.length>=5)break;if(a.pos.some(p=>p.code===s.code))continue;let pr=prices[s.code];if(!pr)continue;let budget=Math.min(a.cash,eq()/5),sh=Math.floor(budget/pr);if(sh<1)continue;let c=sh*pr,f=c*COST;if(c+f>a.cash)continue;a.cash-=c+f;a.pos.push({code:s.code,entry:pr,last:pr,shares:sh,days:0,in:date,score:s.score})}
- a.equity.push({d:date,e:eq()})
-}
-async function paperRun(){
- let p=paperLoad();if(!p){paperInit();p=paperLoad()}
- const el=$('paperResult');el.textContent='逐檔檢查最新收盤日期… 0/50';
+async function paperRun(){if(paperBusy)return;paperBusy=true;const button=$('paperRun');button.disabled=true;
  try{
- const hs={},latest={},errs={},ok={},count={};
- for(let i=0;i<P.length;i++){
-  const [code,name]=P[i];let r;
-  try{r=await paperLatestHistory(code)}catch(e){r={rows:[],errors:[String(e.message||e)]}}
-  hs[code]=r.rows||[];
-  latest[code]=hs[code].length?hs[code][hs[code].length-1][0]:'無資料';
-  errs[code]=(r.errors||[]).join('；');
-  ok[code]=latest[code]!=='無資料';
-  if(ok[code])count[latest[code]]=(count[latest[code]]||0)+1;
-  el.textContent='檢查中 '+(i+1)+'/50｜台積電 '+(latest['2330']||'待檢查');
-  await sleep(180);
- }
- const dates=Object.keys(count).sort(),candidate=dates[dates.length-1]||'';
- const dateRows=Object.entries(count).sort((a,b)=>b[0].localeCompare(a[0]));
- const details=P.filter(([c])=>!ok[c]||latest[c]!==candidate).map(([c,name])=>name+' '+c+'：'+latest[c]+(errs[c]?'｜'+errs[c]:'｜與目標交易日不同'));
- const diagnostics='（當月請求失敗時，可沿用 IndexedDB 已儲存的同日官方行情；不同日期不可混用。）最新日期分布：'+dateRows.map(([d,n])=>d+' '+n+'檔').join('；')+'。未納入：'+details.length+'檔。'+details.join('；');
- if(!candidate){paperRender('沒有取得完整官方月份行情。'+diagnostics);return}
- const prices={},signals=[];
- for(let [code] of P){
-  if(!ok[code]||latest[code]!==candidate)continue;
-  const h=hs[code].filter(x=>x[0]<=candidate),last=h[h.length-1];
-  if(!last||last[0]!==candidate)continue;
-  prices[code]=last[1];
-  if(h.length<21)continue;
-  const sc=score(h.map(x=>({d:x[0],c:x[1],v:x[2]})),h.length-1);
-  if(sc!==null&&sc>=TH)signals.push({code,score:sc});
- }
- const avail=Object.keys(prices).length;
- if(candidate<p.started){paperRender('最新收盤日 '+candidate+' 早於啟用日 '+p.started+'，不回填交易。'+diagnostics);return}
- if(p.lastDate&&candidate<=p.lastDate){paperRender('交易日 '+candidate+' 已處理，不重複計算。'+diagnostics);return}
- if(avail<45){paperRender('當日行情僅 '+avail+'/50，低於45檔安全門檻，未更動帳戶。'+diagnostics);return}
- signals.sort((a,b)=>b.score-a.score);
- paperStepAccount(p.base,0,candidate,prices,signals);
- paperStepAccount(p.stop,.10,candidate,prices,signals);
- p.lastDate=candidate;p.lastFetch={ok:avail,fail:50-avail,available:avail,signals:signals.length};paperSave(p);
- paperRender('已處理 '+candidate+'｜行情 '+avail+'/50｜訊號 '+signals.length+'。'+diagnostics);
- }catch(e){paperRender('診斷失敗：'+String(e.message||e))}
+  let p=paperLoad();if(!p){p=paperNew();paperSave(p)}
+  $('paperResult').textContent='正在取得最新官方收盤與開盤資料… 0/50';
+  let hs={},recent={},opens={},close={},datecount={},errors={},valid=0;
+  for(let i=0;i<P.length;i++){
+   let code=P[i][0],r;
+   try{r=await paperLatestHistory(code)}catch(e){r={rows:[],error:String(e.message||e)}}
+   hs[code]=r.rows;errors[code]=r.error;
+   if(r.rows.length){let last=r.rows[r.rows.length-1];recent[code]=last[0];datecount[last[0]]=(datecount[last[0]]||0)+1}
+   $('paperResult').textContent='行情取得中 '+(i+1)+'/50｜最新日期：'+Object.keys(datecount).sort().slice(-1)[0];await sleep(180);
+  }
+  let dates=Object.keys(datecount).sort(),candidate=dates[dates.length-1];
+  if(!candidate){paperRender('沒有取得有效的收盤資料，兩個帳戶保持原狀。');return}
+  for(let [code] of P){let h=hs[code],row=h[h.length-1];if(!row||row[0]!==candidate)continue;
+   close[code]=row[1];if(row[3]>0)opens[code]=row[3];valid++;
+  }
+  const excluded=P.filter(([c])=>recent[c]!==candidate).map(([c,n])=>n+' '+c+': '+(recent[c]||'無資料')+(errors[c]?' ('+errors[c]+')':''));
+  const diagnostics='最新日 '+candidate+'：收盤 '+valid+'/50、開盤 '+Object.keys(opens).length+'/50。'+(excluded.length?'未納入：'+excluded.join('；'):'');
+  if(candidate<p.started){paperRender('最新收盤日早於啟用日，不回填。'+diagnostics);return}
+  if(p.lastDate&&candidate<=p.lastDate){paperRender('當日已處理，不會重複交易。'+diagnostics);return}
+  if(valid<45){paperRender('當日不足45檔，兩個帳戶未更動。'+diagnostics);return}
+  // Future-only discipline: do not silently backdate simulated fills for missed market days.
+  if(p.lastDate){let allDays=new Set();for(let h of Object.values(hs))for(let r of h)if(r[0]>p.lastDate&&r[0]<=candidate)allDays.add(r[0]);
+   if(allDays.size>1){paperRender('發現漏掉 '+(allDays.size-1)+' 個交易日。為免事後補入虛構成交，暫不更新帳戶。請保留備份並回報此畫面。'+diagnostics);return}
+  }
+  // Never overwrite a position's latest price with stale data; refuse a day with missing held closes.
+  let held=[...p.base.pos,...p.stop.pos].map(x=>x.code),missingHeld=[...new Set(held)].filter(c=>!close[c]);
+  if(missingHeld.length){paperRender('持有股票缺少當日收盤價（'+missingHeld.join('、')+'），暫停以避免錯算淨值。'+diagnostics);return}
+  let signals=[];for(let [code] of P){if(!close[code])continue;let h=hs[code].filter(x=>x[0]<=candidate);if(h.length<21)continue;
+   let v=score(h.map(x=>({d:x[0],c:x[1],v:x[2]})),h.length-1);
+   if(v!==null&&v>=TH)signals.push({code,score:v});}
+  signals.sort((a,b)=>b.score-a.score);
+  let A=paperApplyDay(p.base,candidate,close,opens,signals,false),B=paperApplyDay(p.stop,candidate,close,opens,signals,true);
+  p.lastDate=candidate;p.lastFetch={available:valid,signals:signals.length,openAvailable:Object.keys(opens).length};paperSave(p);
+  paperRender('完成 '+candidate+'；今日收盤訊號 '+signals.length+' 檔（下一交易日才可買進）。無停損：買 '+A.buys+'／賣 '+A.sells+'；-10%：買 '+B.buys+'／賣 '+B.sells+'。'+
+   (A.missingOpen||B.missingOpen?'部分缺少官方開盤價，未假設成交。':'')+diagnostics);
+ }catch(e){paperRender('更新失敗、帳戶未確認變更：'+String(e.message||e))}
+ finally{paperBusy=false;button.disabled=false}
 }
 
- $('start').onclick=()=>go(false);$('retry').onclick=()=>go(true);$('stop').onclick=()=>{stop=true;if(ctl)ctl.abort()};$('validate').onclick=validate;$('stability').onclick=stability;$('risk').onclick=riskCompare;$('portfolio').onclick=portfolioCompare;$('inspectDB').onclick=inspectIndexedDB;$('paperInit').onclick=paperInit;$('paperRun').onclick=paperRun;paperRender();draw();load();})();
+ $('start').onclick=()=>go(false);$('retry').onclick=()=>go(true);$('stop').onclick=()=>{stop=true;if(ctl)ctl.abort()};$('validate').onclick=validate;$('stability').onclick=stability;$('risk').onclick=riskCompare;$('portfolio').onclick=portfolioCompare;$('inspectDB').onclick=inspectIndexedDB;$('paperInit').onclick=paperInit;$('paperRun').onclick=paperRun;$('paperBackup').onclick=paperBackup;$('paperRestore').onchange=paperRestore;paperRender();draw();load();})();

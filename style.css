@@ -14,3 +14,18 @@
 #portfolioResult .compare span{font-size:13px;color:#c2ccda}
 
 #paperResult{margin-top:14px}#paperResult .compare{margin-top:10px}
+
+/* v4 paper trade management */
+.paperTable{width:100%;border-collapse:collapse;white-space:nowrap;font-size:12px}
+.paperTable th,.paperTable td{padding:10px 8px;border-bottom:1px solid #2d3d53;text-align:left}
+.paperTable th{color:#b2c9e8;background:#1d304a}
+.tableScroll{max-width:100%;overflow-x:auto;border-radius:10px;border:1px solid #253851;margin:8px 0 14px}
+.gain{color:#8de1b7}.loss{color:#ffb3ad}
+.paperChart{width:100%;display:block;background:#101e32;border-radius:10px;margin:8px 0}
+.paperDates{font-size:12px;color:#a8b6cc}
+.statusText{white-space:pre-wrap;overflow-wrap:anywhere;background:#10243b;border-radius:9px;padding:12px}
+.restoreLabel{display:block;background:#263955;border-radius:12px;padding:12px;text-align:center;font-weight:700;margin-top:8px}
+#paperRestore{margin:6px 0 12px;width:100%;font-size:12px;color:#b5c9e2}
+button.secondary{background:#29517b}
+.accountSummary b{font-size:19px}
+@media(max-width:420px){.compare{gap:7px}.compare>div{padding:11px}.compare span{font-size:12px;overflow-wrap:anywhere}}
