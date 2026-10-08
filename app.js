@@ -121,31 +121,41 @@ function paperRender(msg=''){
  '<p class="foot">這是前瞻 paper trading。規則啟用後不以歷史資料回填績效；瀏覽器資料若被清除，紙上帳戶也會遺失。</p>'
 }
 function paperInit(){let p=paperLoad();if(!p){p=paperNew();paperSave(p)}
- else if(!p.lastDate&&p.base.trades.length===0&&p.stop.trades.length===0){p.started=twDate();paperSave(p)}
+ 
  paperRender('紙上模擬規則已鎖定。')}
 async function paperLatestHistory(code){
- const now=new Date();
- const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(now);
- const y=+parts.find(x=>x.type==='year').value, mo=+parts.find(x=>x.type==='month').value, day=+parts.find(x=>x.type==='day').value;
- let ms=[[y,mo]];
- if(day<8){let d=new Date(Date.UTC(y,mo-2,1));ms.push([d.getUTCFullYear(),d.getUTCMonth()+1])}
- let all=[];
- for(let [yy,mm] of ms){
-   let ym=String(yy)+String(mm).padStart(2,'0');
-   let r=null;
-   for(let a=1;a<=3;a++){
-     try{r=await fetchMonth(code,ym);if(r&&r.length)break}catch(e){}
-     await sleep(500*a);
-   }
-   if(r&&r.length)all=all.concat(r);
-   await sleep(120);
+ if(!DB)await openDB();
+ const now=new Date(),parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(now);
+ const y=+parts.find(x=>x.type==='year').value,mo=+parts.find(x=>x.type==='month').value;
+ const ym=String(y)+String(mo).padStart(2,'0')+'01';
+ const prev=new Date(Date.UTC(y,mo-2,1));
+ const pm=String(prev.getUTCFullYear())+String(prev.getUTCMonth()+1).padStart(2,'0')+'01';
+ let rows=[],errors=[];
+ // Existing IndexedDB provides the 20-day warm-up, without replaying old trades.
+ for(let m of M){let x=await idbGet(code+'_'+m);if(Array.isArray(x))rows.push(...x)}
+ // The current month is fetched afresh; do not pretend stale cache is a successful live update.
+ for(let month of [pm,ym]){
+  let result=null,err='';
+  for(let a=1;a<=3;a++){
+   const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),12000);
+   try{
+    const url='https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date='+month+'&stockNo='+code+'&response=json&_='+Date.now();
+    const r=await fetch(url,{cache:'no-store',signal:ctl.signal});
+    if(!r.ok)throw Error('HTTP '+r.status);
+    const j=await r.json();
+    if(j.stat!=='OK')throw Error('TWSE '+String(j.stat));
+    result=(j.data||[]).map(q=>[dk(q[0]),n(q[6]),n(q[1])]).filter(q=>q[1]>0);
+    if(!result.length)throw Error('空月份');
+    break;
+   }catch(e){err=e.message||String(e);if(a<3)await sleep(a*700)}
+   finally{clearTimeout(timer)}
+  }
+  if(result){rows.push(...result);await idbPut(code+'_'+month,result)}
+  else errors.push(month+': '+err);
  }
- let dm=new Map();
- for(let x of all){
-   let d=Array.isArray(x)?x[0]:x.d,c=+(Array.isArray(x)?x[1]:x.c),v=+(Array.isArray(x)?x[2]:(x.v||0));
-   if(d&&c>0)dm.set(d,[d,c,v]);
- }
- return [...dm.values()].sort((a,b)=>String(a[0]).localeCompare(String(b[0])));
+ let map=new Map();
+ for(let x of rows){let d=Array.isArray(x)?x[0]:x.d,c=+(Array.isArray(x)?x[1]:x.c),v=+(Array.isArray(x)?x[2]:x.v);if(/^\d{4}-\d\d-\d\d$/.test(d)&&c>0)map.set(d,[d,c,Number.isFinite(v)?v:0])}
+ return {rows:[...map.values()].sort((a,b)=>a[0].localeCompare(b[0])),errors};
 }
 function paperStepAccount(a,stopLoss,date,prices,signals){
  for(let i=a.pos.length-1;i>=0;i--){let p=a.pos[i],pr=prices[p.code];if(!pr)continue;p.last=pr;p.days++;let st=stopLoss&&pr/p.entry-1<=-stopLoss;if(st||p.days>=HOLD){let g=p.shares*pr;a.cash+=g-g*COST;a.trades.push({code:p.code,in:p.in,out:date,entry:p.entry,exit:pr,r:pr/p.entry-1-COST*2,reason:st?'stop':'time'});a.pos.splice(i,1)}}
@@ -155,38 +165,37 @@ function paperStepAccount(a,stopLoss,date,prices,signals){
 }
 async function paperRun(){
  let p=paperLoad();if(!p){paperInit();p=paperLoad()}
- $('paperResult').innerHTML='正在逐檔取得最新官方收盤資料… 0 / '+P.length;
+ const el=$('paperResult');el.textContent='讀取既有歷史資料並更新 TWSE… 0/50';
  try{
-  let hs={},ok=0,fail=0,dateCount={};
-  for(let i=0;i<P.length;i++){
-   let code=P[i][0],h=[];
-   try{h=await paperLatestHistory(code)}catch(e){}
-   hs[code]=h;
-   if(h.length){ok++;let d=String(h[h.length-1][0]);dateCount[d]=(dateCount[d]||0)+1}else fail++;
-   $('paperResult').innerHTML='正在逐檔取得最新官方收盤資料… '+(i+1)+' / '+P.length+'<br>成功 '+ok+'｜失敗 '+fail;
-   await sleep(100);
-  }
-  let dates=Object.keys(dateCount).sort();
-  if(!dates.length){paperRender('沒有取得可用行情。成功 '+ok+'/50｜失敗 '+fail+'/50。');return}
-  let latestDate=dates[dates.length-1],prices={},signals=[];
-  for(let item of P){
-    let code=item[0],h=hs[code]||[], row=[...h].reverse().find(x=>String(x[0])===latestDate);
-    if(row)prices[code]=+row[1];
-  }
-  let available=Object.keys(prices).length;
-  if(p.lastDate===latestDate){paperRender('最新交易日 '+latestDate+' 已更新過。成功 '+ok+'/50｜失敗 '+fail+'/50｜當日行情 '+available+'/50。');return}
-  for(let item of P){
-    let code=item[0],h=(hs[code]||[]).filter(x=>String(x[0])<=latestDate);
-    if(h.length<21||!prices[code])continue;
-    let sc=scoreAt(h,h.length-1);
-    if(sc>=TH)signals.push({code,score:sc});
-  }
-  signals.sort((a,b)=>b.score-a.score);
-  paperStepAccount(p.base,0,latestDate,prices,signals);
-  paperStepAccount(p.stop,.10,latestDate,prices,signals);
-  p.lastDate=latestDate;p.lastFetch={ok,fail,available,signals:signals.length};paperSave(p);
-  paperRender('完成 '+latestDate+'｜下載成功 '+ok+'/50｜失敗 '+fail+'/50｜當日行情 '+available+'/50｜Strategy ≥'+TH+' 訊號 '+signals.length+' 檔。');
- }catch(e){paperRender('更新失敗：'+(e&&e.message?e.message:String(e)))}
+ let hs={},ok=0,fail=0,err2330='',fresh={},asof=twDate();
+ for(let i=0;i<P.length;i++){
+  const code=P[i][0];let result;
+  try{result=await paperLatestHistory(code)}catch(e){result={rows:[],errors:[String(e.message||e)]}}
+  hs[code]=result.rows;
+  if(result.errors.length===0){ok++;let row=result.rows[result.rows.length-1];if(row)fresh[code]=row[0]}
+  else {fail++;if(code==='2330')err2330=result.errors.join('；')}
+  el.textContent='更新中 '+(i+1)+'/50｜TWSE完整成功 '+ok+'｜部分失敗 '+fail+(err2330?'｜台積電：'+err2330:'');
+  await sleep(250)
+ }
+ const dates=Object.values(fresh).sort();
+ if(!dates.length){paperRender('本次沒有成功取得完整的新月份行情。成功 '+ok+'/50｜失敗 '+fail+'/50｜台積電錯誤：'+(err2330||'無詳細訊息'));return}
+ const latestDate=dates[dates.length-1];
+ if(latestDate<p.started){paperRender('最新收盤日 '+latestDate+' 早於啟用日 '+p.started+'，不回填歷史交易。成功 '+ok+'/50｜失敗 '+fail+'/50。');return}
+ if(p.lastDate&&latestDate<=p.lastDate){paperRender('交易日 '+latestDate+' 已處理或較舊，不重複計算。成功 '+ok+'/50｜失敗 '+fail+'/50。');return}
+ const prices={},signals=[];
+ for(let item of P){let code=item[0],h=(hs[code]||[]).filter(x=>x[0]<=latestDate),last=h[h.length-1];
+  if(!last||last[0]!==latestDate||fresh[code]!==latestDate)continue;
+  prices[code]=last[1];
+  if(h.length<21)continue;
+  const s=score(h.map(x=>({d:x[0],c:x[1],v:x[2]})),h.length-1);
+  if(s!==null&&s>=TH)signals.push({code,score:s});
+ }
+ if(Object.keys(prices).length<45){paperRender('當日行情僅 '+Object.keys(prices).length+'/50，低於45檔安全門檻，未更動帳戶。台積電錯誤：'+(err2330||'無'));return}
+ signals.sort((a,b)=>b.score-a.score);
+ paperStepAccount(p.base,0,latestDate,prices,signals);
+ paperStepAccount(p.stop,.10,latestDate,prices,signals);
+ p.lastDate=latestDate;p.lastFetch={ok,fail,available:Object.keys(prices).length,signals:signals.length};paperSave(p);
+ paperRender('已處理 '+latestDate+'｜成功 '+ok+'/50｜失敗 '+fail+'/50｜當日 '+Object.keys(prices).length+'/50｜訊號 '+signals.length+'。'+(err2330?' 台積電錯誤：'+err2330:''));
+ }catch(e){paperRender('更新錯誤：'+String(e.message||e))}
 }
-
  $('start').onclick=()=>go(false);$('retry').onclick=()=>go(true);$('stop').onclick=()=>{stop=true;if(ctl)ctl.abort()};$('validate').onclick=validate;$('stability').onclick=stability;$('risk').onclick=riskCompare;$('portfolio').onclick=portfolioCompare;$('inspectDB').onclick=inspectIndexedDB;$('paperInit').onclick=paperInit;$('paperRun').onclick=paperRun;paperRender();draw();load();})();
