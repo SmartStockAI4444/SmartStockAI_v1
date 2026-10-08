@@ -96,8 +96,11 @@ async function inspectIndexedDB(){
 const PAPER_KEY='ssa39paper';
 function paperLoad(){try{return JSON.parse(localStorage.getItem(PAPER_KEY)||'null')}catch(e){return null}}
 function paperSave(x){localStorage.setItem(PAPER_KEY,JSON.stringify(x))}
+function twDate(){
+ return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())
+}
 function paperNew(){
- let d=new Date().toISOString().slice(0,10);
+ let d=twDate();
  return {version:'3.9',started:d,lastDate:null,
   base:{cash:100000,pos:[],trades:[],equity:[{d,e:100000}]},
   stop:{cash:100000,pos:[],trades:[],equity:[{d,e:100000}]}}
@@ -117,15 +120,32 @@ function paperRender(msg=''){
  '<div class="compare">'+paperAccountCard('基準：無停損',p.base)+paperAccountCard('對照：固定 -10%',p.stop)+'</div>'+
  '<p class="foot">這是前瞻 paper trading。規則啟用後不以歷史資料回填績效；瀏覽器資料若被清除，紙上帳戶也會遺失。</p>'
 }
-function paperInit(){let p=paperLoad();if(!p){p=paperNew();paperSave(p)}paperRender('紙上模擬規則已鎖定。')}
+function paperInit(){let p=paperLoad();if(!p){p=paperNew();paperSave(p)}
+ else if(!p.lastDate&&p.base.trades.length===0&&p.stop.trades.length===0){p.started=twDate();paperSave(p)}
+ paperRender('紙上模擬規則已鎖定。')}
 async function paperLatestHistory(code){
- let now=new Date(), y=now.getFullYear(), m=String(now.getMonth()+1).padStart(2,'0');
- let months=[String(y)+m];
- if(now.getDate()<8){let d=new Date(y,now.getMonth()-1,1);months.push(String(d.getFullYear())+String(d.getMonth()+1).padStart(2,'0'))}
+ const now=new Date();
+ const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(now);
+ const y=+parts.find(x=>x.type==='year').value, mo=+parts.find(x=>x.type==='month').value, day=+parts.find(x=>x.type==='day').value;
+ let ms=[[y,mo]];
+ if(day<8){let d=new Date(Date.UTC(y,mo-2,1));ms.push([d.getUTCFullYear(),d.getUTCMonth()+1])}
  let all=[];
- for(let ym of months){try{let r=await fetchMonth(code,ym);if(r&&r.length)all=all.concat(r)}catch(e){}}
- let dm=new Map();for(let x of all){let d=Array.isArray(x)?x[0]:x.d,c=+(Array.isArray(x)?x[1]:x.c),v=+(Array.isArray(x)?x[2]:x.v||0);if(d&&c>0)dm.set(d,[d,c,v])}
- return [...dm.values()].sort((a,b)=>String(a[0]).localeCompare(String(b[0])))
+ for(let [yy,mm] of ms){
+   let ym=String(yy)+String(mm).padStart(2,'0');
+   let r=null;
+   for(let a=1;a<=3;a++){
+     try{r=await fetchMonth(code,ym);if(r&&r.length)break}catch(e){}
+     await sleep(500*a);
+   }
+   if(r&&r.length)all=all.concat(r);
+   await sleep(120);
+ }
+ let dm=new Map();
+ for(let x of all){
+   let d=Array.isArray(x)?x[0]:x.d,c=+(Array.isArray(x)?x[1]:x.c),v=+(Array.isArray(x)?x[2]:(x.v||0));
+   if(d&&c>0)dm.set(d,[d,c,v]);
+ }
+ return [...dm.values()].sort((a,b)=>String(a[0]).localeCompare(String(b[0])));
 }
 function paperStepAccount(a,stopLoss,date,prices,signals){
  for(let i=a.pos.length-1;i>=0;i--){let p=a.pos[i],pr=prices[p.code];if(!pr)continue;p.last=pr;p.days++;let st=stopLoss&&pr/p.entry-1<=-stopLoss;if(st||p.days>=HOLD){let g=p.shares*pr;a.cash+=g-g*COST;a.trades.push({code:p.code,in:p.in,out:date,entry:p.entry,exit:pr,r:pr/p.entry-1-COST*2,reason:st?'stop':'time'});a.pos.splice(i,1)}}
@@ -135,24 +155,38 @@ function paperStepAccount(a,stopLoss,date,prices,signals){
 }
 async function paperRun(){
  let p=paperLoad();if(!p){paperInit();p=paperLoad()}
- $('paperResult').innerHTML='正在取得 50 檔最新官方收盤資料並計算今日訊號…';
+ $('paperResult').innerHTML='正在逐檔取得最新官方收盤資料… 0 / '+P.length;
  try{
-  let hs={},latestDate='',prices={},signals=[];
+  let hs={},ok=0,fail=0,dateCount={};
   for(let i=0;i<P.length;i++){
-   let code=P[i][0],h=await paperLatestHistory(code);hs[code]=h;
-   if(h.length){let last=h[h.length-1];if(String(last[0])>latestDate)latestDate=String(last[0]);prices[code]=+last[1]}
-   await sleep(80)
+   let code=P[i][0],h=[];
+   try{h=await paperLatestHistory(code)}catch(e){}
+   hs[code]=h;
+   if(h.length){ok++;let d=String(h[h.length-1][0]);dateCount[d]=(dateCount[d]||0)+1}else fail++;
+   $('paperResult').innerHTML='正在逐檔取得最新官方收盤資料… '+(i+1)+' / '+P.length+'<br>成功 '+ok+'｜失敗 '+fail;
+   await sleep(100);
   }
-  if(!latestDate){paperRender('今天沒有取得可用行情。');return}
-  if(p.lastDate===latestDate){paperRender('最新交易日 '+latestDate+' 已經更新過，不會重複計算。');return}
-  // Do not backfill dates before activation. Score only from data available through latest close.
-  for(let item of P){let code=item[0],h=hs[code]||[];if(h.length<21)continue;let s=scoreAt(h,h.length-1);if(s>=TH)signals.push({code,score:s})}
+  let dates=Object.keys(dateCount).sort();
+  if(!dates.length){paperRender('沒有取得可用行情。成功 '+ok+'/50｜失敗 '+fail+'/50。');return}
+  let latestDate=dates[dates.length-1],prices={},signals=[];
+  for(let item of P){
+    let code=item[0],h=hs[code]||[], row=[...h].reverse().find(x=>String(x[0])===latestDate);
+    if(row)prices[code]=+row[1];
+  }
+  let available=Object.keys(prices).length;
+  if(p.lastDate===latestDate){paperRender('最新交易日 '+latestDate+' 已更新過。成功 '+ok+'/50｜失敗 '+fail+'/50｜當日行情 '+available+'/50。');return}
+  for(let item of P){
+    let code=item[0],h=(hs[code]||[]).filter(x=>String(x[0])<=latestDate);
+    if(h.length<21||!prices[code])continue;
+    let sc=scoreAt(h,h.length-1);
+    if(sc>=TH)signals.push({code,score:sc});
+  }
   signals.sort((a,b)=>b.score-a.score);
   paperStepAccount(p.base,0,latestDate,prices,signals);
   paperStepAccount(p.stop,.10,latestDate,prices,signals);
-  p.lastDate=latestDate;paperSave(p);
-  paperRender('完成 '+latestDate+'：符合 Strategy ≥'+TH+' 的訊號 '+signals.length+' 檔。')
- }catch(e){paperRender('更新失敗：'+(e?.message||e))}
+  p.lastDate=latestDate;p.lastFetch={ok,fail,available,signals:signals.length};paperSave(p);
+  paperRender('完成 '+latestDate+'｜下載成功 '+ok+'/50｜失敗 '+fail+'/50｜當日行情 '+available+'/50｜Strategy ≥'+TH+' 訊號 '+signals.length+' 檔。');
+ }catch(e){paperRender('更新失敗：'+(e&&e.message?e.message:String(e)))}
 }
 
  $('start').onclick=()=>go(false);$('retry').onclick=()=>go(true);$('stop').onclick=()=>{stop=true;if(ctl)ctl.abort()};$('validate').onclick=validate;$('stability').onclick=stability;$('risk').onclick=riskCompare;$('portfolio').onclick=portfolioCompare;$('inspectDB').onclick=inspectIndexedDB;$('paperInit').onclick=paperInit;$('paperRun').onclick=paperRun;paperRender();draw();load();})();
