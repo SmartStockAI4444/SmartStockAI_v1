@@ -115,7 +115,7 @@ function paperAccountCard(n,a){
 }
 function paperRender(msg=''){
  let p=paperLoad(); if(!p){$('paperResult').innerHTML='尚未啟用紙上模擬。';return}
- $('paperResult').innerHTML=(msg?'<p>'+msg+'</p>':'')+
+ $('paperResult').innerHTML=(msg?'<p style="overflow-wrap:anywhere;white-space:pre-wrap">'+String(msg).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</p>':'')+
  '<p>啟用日：<b>'+p.started+'</b>｜最後更新：<b>'+(p.lastDate||'尚未更新')+'</b></p>'+
  '<div class="compare">'+paperAccountCard('基準：無停損',p.base)+paperAccountCard('對照：固定 -10%',p.stop)+'</div>'+
  '<p class="foot">這是前瞻 paper trading。規則啟用後不以歷史資料回填績效；瀏覽器資料若被清除，紙上帳戶也會遺失。</p>'
@@ -165,37 +165,45 @@ function paperStepAccount(a,stopLoss,date,prices,signals){
 }
 async function paperRun(){
  let p=paperLoad();if(!p){paperInit();p=paperLoad()}
- const el=$('paperResult');el.textContent='讀取既有歷史資料並更新 TWSE… 0/50';
+ const el=$('paperResult');el.textContent='逐檔檢查最新收盤日期… 0/50';
  try{
- let hs={},ok=0,fail=0,err2330='',fresh={},asof=twDate();
+ const hs={},latest={},errs={},ok={},count={};
  for(let i=0;i<P.length;i++){
-  const code=P[i][0];let result;
-  try{result=await paperLatestHistory(code)}catch(e){result={rows:[],errors:[String(e.message||e)]}}
-  hs[code]=result.rows;
-  if(result.errors.length===0){ok++;let row=result.rows[result.rows.length-1];if(row)fresh[code]=row[0]}
-  else {fail++;if(code==='2330')err2330=result.errors.join('；')}
-  el.textContent='更新中 '+(i+1)+'/50｜TWSE完整成功 '+ok+'｜部分失敗 '+fail+(err2330?'｜台積電：'+err2330:'');
-  await sleep(250)
+  const [code,name]=P[i];let r;
+  try{r=await paperLatestHistory(code)}catch(e){r={rows:[],errors:[String(e.message||e)]}}
+  hs[code]=r.rows||[];
+  latest[code]=hs[code].length?hs[code][hs[code].length-1][0]:'無資料';
+  errs[code]=(r.errors||[]).join('；');
+  ok[code]=!errs[code]&&latest[code]!=='無資料';
+  if(ok[code])count[latest[code]]=(count[latest[code]]||0)+1;
+  el.textContent='檢查中 '+(i+1)+'/50｜台積電 '+(latest['2330']||'待檢查');
+  await sleep(180);
  }
- const dates=Object.values(fresh).sort();
- if(!dates.length){paperRender('本次沒有成功取得完整的新月份行情。成功 '+ok+'/50｜失敗 '+fail+'/50｜台積電錯誤：'+(err2330||'無詳細訊息'));return}
- const latestDate=dates[dates.length-1];
- if(latestDate<p.started){paperRender('最新收盤日 '+latestDate+' 早於啟用日 '+p.started+'，不回填歷史交易。成功 '+ok+'/50｜失敗 '+fail+'/50。');return}
- if(p.lastDate&&latestDate<=p.lastDate){paperRender('交易日 '+latestDate+' 已處理或較舊，不重複計算。成功 '+ok+'/50｜失敗 '+fail+'/50。');return}
+ const dates=Object.keys(count).sort(),candidate=dates[dates.length-1]||'';
+ const dateRows=Object.entries(count).sort((a,b)=>b[0].localeCompare(a[0]));
+ const details=P.filter(([c])=>!ok[c]||latest[c]!==candidate).map(([c,name])=>name+' '+c+'：'+latest[c]+(errs[c]?'｜'+errs[c]:'｜與目標交易日不同'));
+ const diagnostics='最新日期分布：'+dateRows.map(([d,n])=>d+' '+n+'檔').join('；')+'。未納入：'+details.length+'檔。'+details.join('；');
+ if(!candidate){paperRender('沒有取得完整官方月份行情。'+diagnostics);return}
  const prices={},signals=[];
- for(let item of P){let code=item[0],h=(hs[code]||[]).filter(x=>x[0]<=latestDate),last=h[h.length-1];
-  if(!last||last[0]!==latestDate||fresh[code]!==latestDate)continue;
+ for(let [code] of P){
+  if(!ok[code]||latest[code]!==candidate)continue;
+  const h=hs[code].filter(x=>x[0]<=candidate),last=h[h.length-1];
+  if(!last||last[0]!==candidate)continue;
   prices[code]=last[1];
   if(h.length<21)continue;
-  const s=score(h.map(x=>({d:x[0],c:x[1],v:x[2]})),h.length-1);
-  if(s!==null&&s>=TH)signals.push({code,score:s});
+  const sc=score(h.map(x=>({d:x[0],c:x[1],v:x[2]})),h.length-1);
+  if(sc!==null&&sc>=TH)signals.push({code,score:sc});
  }
- if(Object.keys(prices).length<45){paperRender('當日行情僅 '+Object.keys(prices).length+'/50，低於45檔安全門檻，未更動帳戶。台積電錯誤：'+(err2330||'無'));return}
+ const avail=Object.keys(prices).length;
+ if(candidate<p.started){paperRender('最新收盤日 '+candidate+' 早於啟用日 '+p.started+'，不回填交易。'+diagnostics);return}
+ if(p.lastDate&&candidate<=p.lastDate){paperRender('交易日 '+candidate+' 已處理，不重複計算。'+diagnostics);return}
+ if(avail<45){paperRender('當日行情僅 '+avail+'/50，低於45檔安全門檻，未更動帳戶。'+diagnostics);return}
  signals.sort((a,b)=>b.score-a.score);
- paperStepAccount(p.base,0,latestDate,prices,signals);
- paperStepAccount(p.stop,.10,latestDate,prices,signals);
- p.lastDate=latestDate;p.lastFetch={ok,fail,available:Object.keys(prices).length,signals:signals.length};paperSave(p);
- paperRender('已處理 '+latestDate+'｜成功 '+ok+'/50｜失敗 '+fail+'/50｜當日 '+Object.keys(prices).length+'/50｜訊號 '+signals.length+'。'+(err2330?' 台積電錯誤：'+err2330:''));
- }catch(e){paperRender('更新錯誤：'+String(e.message||e))}
+ paperStepAccount(p.base,0,candidate,prices,signals);
+ paperStepAccount(p.stop,.10,candidate,prices,signals);
+ p.lastDate=candidate;p.lastFetch={ok:avail,fail:50-avail,available:avail,signals:signals.length};paperSave(p);
+ paperRender('已處理 '+candidate+'｜行情 '+avail+'/50｜訊號 '+signals.length+'。'+diagnostics);
+ }catch(e){paperRender('診斷失敗：'+String(e.message||e))}
 }
+
  $('start').onclick=()=>go(false);$('retry').onclick=()=>go(true);$('stop').onclick=()=>{stop=true;if(ctl)ctl.abort()};$('validate').onclick=validate;$('stability').onclick=stability;$('risk').onclick=riskCompare;$('portfolio').onclick=portfolioCompare;$('inspectDB').onclick=inspectIndexedDB;$('paperInit').onclick=paperInit;$('paperRun').onclick=paperRun;paperRender();draw();load();})();
