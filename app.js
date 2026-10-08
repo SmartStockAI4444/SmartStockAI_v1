@@ -134,7 +134,7 @@ async function paperLatestHistory(code){
  // Existing IndexedDB provides the 20-day warm-up, without replaying old trades.
  for(let m of M){let x=await idbGet(code+'_'+m);if(Array.isArray(x))rows.push(...x)}
  // The current month is fetched afresh; do not pretend stale cache is a successful live update.
- for(let month of [pm,ym]){
+ for(let month of [ym]){
   let result=null,err='';
   for(let a=1;a<=3;a++){
    const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),12000);
@@ -174,7 +174,7 @@ async function paperRun(){
   hs[code]=r.rows||[];
   latest[code]=hs[code].length?hs[code][hs[code].length-1][0]:'無資料';
   errs[code]=(r.errors||[]).join('；');
-  ok[code]=!errs[code]&&latest[code]!=='無資料';
+  ok[code]=latest[code]!=='無資料';
   if(ok[code])count[latest[code]]=(count[latest[code]]||0)+1;
   el.textContent='檢查中 '+(i+1)+'/50｜台積電 '+(latest['2330']||'待檢查');
   await sleep(180);
@@ -182,7 +182,7 @@ async function paperRun(){
  const dates=Object.keys(count).sort(),candidate=dates[dates.length-1]||'';
  const dateRows=Object.entries(count).sort((a,b)=>b[0].localeCompare(a[0]));
  const details=P.filter(([c])=>!ok[c]||latest[c]!==candidate).map(([c,name])=>name+' '+c+'：'+latest[c]+(errs[c]?'｜'+errs[c]:'｜與目標交易日不同'));
- const diagnostics='最新日期分布：'+dateRows.map(([d,n])=>d+' '+n+'檔').join('；')+'。未納入：'+details.length+'檔。'+details.join('；');
+ const diagnostics='（當月請求失敗時，可沿用 IndexedDB 已儲存的同日官方行情；不同日期不可混用。）最新日期分布：'+dateRows.map(([d,n])=>d+' '+n+'檔').join('；')+'。未納入：'+details.length+'檔。'+details.join('；');
  if(!candidate){paperRender('沒有取得完整官方月份行情。'+diagnostics);return}
  const prices={},signals=[];
  for(let [code] of P){
