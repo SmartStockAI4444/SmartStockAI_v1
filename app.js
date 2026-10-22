@@ -101,9 +101,9 @@ function paperEsc(x){return String(x??'').replace(/&/g,'&amp;').replace(/</g,'&l
 function paperMoney(x){return 'NT$ '+Math.round(Number(x)||0).toLocaleString('en-US')}
 function paperPct(x){return (100*(Number(x)||0)).toFixed(2)+'%'}
 function twDate(){let x=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());return x}
-function paperNew(){let d=twDate();return{version:'4.1',started:d,lastDate:null,
- base:{cash:100000,pos:[],trades:[],equity:[{d,e:100000}],pending:{date:null,buys:[],sells:[]},log:[]},
- stop:{cash:100000,pos:[],trades:[],equity:[{d,e:100000}],pending:{date:null,buys:[],sells:[]},log:[]}}}
+function paperNew(){let d=twDate();return{version:'4.2',started:d,lastDate:null,
+ base:{cash:100000,pos:[],trades:[],equity:[{d,e:100000}],pending:{date:null,buys:[],sells:[]},log:[],stopEvents:[]},
+ stop:{cash:100000,pos:[],trades:[],equity:[{d,e:100000}],pending:{date:null,buys:[],sells:[]},log:[],stopEvents:[]}}}
 function paperSave(x){localStorage.setItem(PAPER_KEY,JSON.stringify(x))}
 function paperLoad(){let p=null;try{p=JSON.parse(localStorage.getItem(PAPER_KEY)||'null')}catch(e){}if(!p)return null;
  // In-place, non-destructive migration; preserve both already-open v3.9.4 accounts.
@@ -119,8 +119,10 @@ function paperLoad(){let p=null;try{p=JSON.parse(localStorage.getItem(PAPER_KEY)
    for(let x of a.pos){x.legacy=true;x.buyFee=Number(x.entry||0)*Number(x.shares||0)*PAPER_FEE;
     a.log.push({date:x.in||p.lastDate||'',type:'buy',code:x.code,shares:x.shares,price:x.entry,reason:'v3.9.4 已持有（承接）',legacy:true});}
   }
-  p.paperV4=true;p.version='4.1';paperSave(p);
+  p.paperV4=true;p.version='4.2';paperSave(p);
  }
+ for(let kind of ['base','stop']){if(p[kind]&&!Array.isArray(p[kind].stopEvents))p[kind].stopEvents=[];}
+ if(p.version!=='4.2')p.version='4.2';
  return p;
 }
 function paperDD(eq){let peak=100000,dd=0;for(let x of eq){peak=Math.max(peak,x.e);if(peak>0)dd=Math.min(dd,x.e/peak-1)}return dd}
@@ -141,13 +143,16 @@ function paperLedger(a){let log=(a.log||[]).slice().sort((x,y)=>String(y.date).l
  for(let x of log)h+='<tr><td>'+paperEsc(x.date)+'</td><td>'+ (x.type==='buy'?'買進':'賣出')+'</td><td>'+paperEsc(STOCK_NAME[x.code]||x.code)+' '+paperEsc(x.code)+'</td><td>'+paperEsc(x.shares??'—')+'</td><td>'+ (Number.isFinite(Number(x.price))?Number(x.price).toFixed(2):'—')+'</td><td>'+paperEsc(x.reason||'')+'</td></tr>';
  return h+'</tbody></table></div><p class="foot">最多顯示最近50筆，完整交易紀錄包含於備份檔。</p>'}
 function paperStopAudit(a){
- let rows=(a.log||[]).filter(x=>x.type==='sell'&&(x.reason==='前日收盤觸發停損'||x.stopTriggerDate||x.triggerDate));
- if(!rows.length)return '<p class="foot">目前沒有新的固定 -10% 停損成交紀錄。舊版交易若沒有觸發欄位，無法事後推定。</p>';
- rows=rows.slice().sort((x,y)=>String(y.date).localeCompare(String(x.date))).slice(0,30);
- let h='<div class="tableScroll"><table class="paperTable"><thead><tr><th>觸發日</th><th>觸發收盤</th><th>觸發跌幅</th><th>成交日</th><th>開盤成交價</th><th>成交較買進</th></tr></thead><tbody>';
- for(let x of rows){let base=Number(x.entry||0),fill=Number(x.price||0),trigger=Number(x.stopTriggerClose||x.triggerClose||0),pct=Number(x.stopTriggerPct??x.triggerPct??(base&&trigger?trigger/base-1:NaN));
- h+='<tr><td>'+paperEsc(x.stopTriggerDate||x.triggerDate||'舊資料未記錄')+'</td><td>'+(trigger>0?trigger.toFixed(2):'—')+'</td><td>'+(Number.isFinite(pct)?paperPct(pct):'—')+'</td><td>'+paperEsc(x.date||'—')+'</td><td>'+(fill>0?fill.toFixed(2):'—')+'</td><td>'+(base&&fill?paperPct(fill/base-1):'—')+'</td></tr>'}
- return h+'</tbody></table></div><p class="foot">觸發跌幅按當日收盤價相對買進價計算；成交價採下一個可取得的官方開盤價。跳空時實際跌幅可能超過 -10%。</p>';
+ let events=Array.isArray(a.stopEvents)?a.stopEvents.slice():[];
+ let legacy=(a.log||[]).filter(x=>x.type==='sell'&&x.reason==='前日收盤觸發停損'&&!events.some(e=>e.code===x.code&&(e.fillDate||e.triggerDate)=== (x.date||x.stopTriggerDate)));
+ legacy.forEach(x=>events.push({code:x.code,entry:x.entry,triggerDate:x.stopTriggerDate||x.triggerDate||null,triggerClose:x.stopTriggerClose||x.triggerClose||null,triggerPct:x.stopTriggerPct??x.triggerPct??null,fillDate:x.date||null,fillPrice:x.price||null,status:'舊紀錄／欄位不完整'}));
+ if(!events.length)return '<p class="foot">目前沒有固定 -10% 停損事件。新版本會在收盤觸發時先保存事件，下一個交易日取得官方開盤價後再更新成交資料。</p>';
+ events.sort((x,y)=>String(y.triggerDate||y.fillDate||'').localeCompare(String(x.triggerDate||x.fillDate||'')));
+ events=events.slice(0,30);
+ let h='<div class="tableScroll"><table class="paperTable"><thead><tr><th>股票</th><th>觸發日</th><th>觸發收盤</th><th>觸發跌幅</th><th>成交日</th><th>開盤成交價</th><th>成交較買進</th><th>狀態</th></tr></thead><tbody>';
+ for(let x of events){let base=Number(x.entry||0),fill=Number(x.fillPrice||0),trigger=Number(x.triggerClose||0),pct=Number(x.triggerPct??(base&&trigger?trigger/base-1:NaN));
+ h+='<tr><td>'+paperEsc((STOCK_NAME[x.code]||x.code)+' '+x.code)+'</td><td>'+paperEsc(x.triggerDate||'歷史資料缺失')+'</td><td>'+(trigger>0?trigger.toFixed(2):'—')+'</td><td>'+(Number.isFinite(pct)?paperPct(pct):'—')+'</td><td>'+paperEsc(x.fillDate||'待成交')+'</td><td>'+(fill>0?fill.toFixed(2):'—')+'</td><td>'+(base&&fill?paperPct(fill/base-1):'—')+'</td><td>'+paperEsc(x.status||(x.fillDate?'已成交':'等待成交'))+'</td></tr>'}
+ return h+'</tbody></table></div><p class="foot">v4.2 會先保存收盤觸發事件，再於下一個可取得官方開盤價的交易日記錄成交；若開盤價缺失，事件會保持等待成交，不會假造價格。舊紀錄缺少欄位時顯示「歷史資料缺失」，不推測補值。跳空時實際損失可能超過 -10%。</p>';
 }
 function paperChart(a){let eq=a.equity||[];
  if(eq.length<2)return '<p class="foot">尚不足兩個更新日，暫無績效曲線。</p>';
@@ -163,7 +168,7 @@ function paperRender(msg=''){
  '<h3>買賣交易紀錄</h3><h4>無停損</h4>'+paperLedger(p.base)+'<h4>固定 -10%</h4>'+paperLedger(p.stop)+
  '<h3>固定 -10% 停損稽核</h3>'+paperStopAudit(p.stop)+
  '<h3>每日資產變化</h3><h4>無停損</h4>'+paperChart(p.base)+'<h4>固定 -10%</h4>'+paperChart(p.stop)+
- '<p class="foot">v4.1：收盤後產生訊號，下一交易日以官方開盤價進行假設成交。-10%為收盤價觸發、下一交易日開盤價賣出，不保證能以-10%成交。' +
+ '<p class="foot">v4.2：收盤後產生訊號，下一交易日以官方開盤價進行假設成交。-10%為收盤價觸發、下一交易日開盤價賣出，不保證能以-10%成交。' +
  '沿用舊版每次買進／賣出各扣0.585%的費用設定（總計約1.17%，不是原先所稱往返0.585%）。未來新增交易不改費率，避免破壞帳戶連續性。' +
  '若漏掉交易日，系統為避免倒填而暫停交易更新。歷史與紙上模擬皆不保證未來績效。</p>';
 }
@@ -208,6 +213,7 @@ function paperApplyDay(a,date,prices,opens,signals,stopEnabled){
    let pnl=gross-fee-x.shares*x.entry-(x.buyFee||0);
    a.trades.push({code,in:x.in,out:date,entry:x.entry,exit:op,shares:x.shares,fee,pnl,r:pnl/(x.shares*x.entry),reason:x.queuedReason||'time',stopTriggerDate:x.stopTriggerDate||null,stopTriggerClose:x.stopTriggerClose||null,stopTriggerPct:x.stopTriggerPct??null});
    a.log.push({date,type:'sell',code,shares:x.shares,price:op,entry:x.entry,reason:x.queuedReason==='stop'?'前日收盤觸發停損': '持有20日到期',stopTriggerDate:x.stopTriggerDate||null,stopTriggerClose:x.stopTriggerClose||null,stopTriggerPct:x.stopTriggerPct??null});
+   if(x.queuedReason==='stop'){if(!Array.isArray(a.stopEvents))a.stopEvents=[];let ev=a.stopEvents.find(e=>e.code===code&&e.triggerDate===x.stopTriggerDate&&!e.fillDate);if(!ev){ev={code,entry:x.entry,triggerDate:x.stopTriggerDate||null,triggerClose:x.stopTriggerClose||null,triggerPct:x.stopTriggerPct??null};a.stopEvents.push(ev)}ev.fillDate=date;ev.fillPrice=op;ev.status='已成交';}
    a.pos.splice(i,1);actions.sells++;
   }
   for(let s of pending.buys){if(a.pos.length>=5)break;if(a.pos.some(x=>x.code===s.code))continue;let op=opens[s.code];if(!(op>0)){actions.missingOpen++;continue}
@@ -221,7 +227,9 @@ function paperApplyDay(a,date,prices,opens,signals,stopEnabled){
   }
  }
  for(let x of a.pos){if(prices[x.code]>0)x.last=prices[x.code];if(x.in!==date)x.days=Number(x.days||0)+1;}
- let sell=sellCarry.slice();for(let x of a.pos){if(sell.includes(x.code))continue;if(stopEnabled&&x.last/x.entry-1<=-.10){sell.push(x.code);x.queuedReason='stop';x.stopTriggerDate=date;x.stopTriggerClose=x.last;x.stopTriggerPct=x.last/x.entry-1}else if(x.days>=20){sell.push(x.code);x.queuedReason='time'}}
+ let sell=sellCarry.slice();for(let x of a.pos){if(sell.includes(x.code))continue;if(stopEnabled&&x.last/x.entry-1<=-.10){sell.push(x.code);x.queuedReason='stop';x.stopTriggerDate=date;x.stopTriggerClose=x.last;x.stopTriggerPct=x.last/x.entry-1;
+   if(!Array.isArray(a.stopEvents))a.stopEvents=[];if(!a.stopEvents.some(e=>e.code===x.code&&e.triggerDate===date)){a.stopEvents.push({code:x.code,entry:x.entry,triggerDate:date,triggerClose:x.last,triggerPct:x.last/x.entry-1,status:'等待下一交易日開盤成交',fillDate:null,fillPrice:null});}
+  }else if(x.days>=20){sell.push(x.code);x.queuedReason='time'}}
  a.pending={date,buys:signals.map(s=>({code:s.code,score:s.score})),sells:sell};
  let val=paperAssets(a).equity;a.equity.push({d:date,e:val});
  return actions;
