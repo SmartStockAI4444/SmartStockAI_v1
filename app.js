@@ -101,7 +101,7 @@ function paperEsc(x){return String(x??'').replace(/&/g,'&amp;').replace(/</g,'&l
 function paperMoney(x){return 'NT$ '+Math.round(Number(x)||0).toLocaleString('en-US')}
 function paperPct(x){return (100*(Number(x)||0)).toFixed(2)+'%'}
 function twDate(){let x=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());return x}
-function paperNew(){let d=twDate();return{version:'4.3',started:d,lastDate:null,
+function paperNew(){let d=twDate();return{version:'4.4',started:d,lastDate:null,
  base:{cash:100000,pos:[],trades:[],equity:[{d,e:100000}],pending:{date:null,buys:[],sells:[]},log:[],stopEvents:[]},
  stop:{cash:100000,pos:[],trades:[],equity:[{d,e:100000}],pending:{date:null,buys:[],sells:[]},log:[],stopEvents:[]}}}
 function paperSave(x){localStorage.setItem(PAPER_KEY,JSON.stringify(x))}
@@ -119,10 +119,10 @@ function paperLoad(){let p=null;try{p=JSON.parse(localStorage.getItem(PAPER_KEY)
    for(let x of a.pos){x.legacy=true;x.buyFee=Number(x.entry||0)*Number(x.shares||0)*PAPER_FEE;
     a.log.push({date:x.in||p.lastDate||'',type:'buy',code:x.code,shares:x.shares,price:x.entry,reason:'v3.9.4 已持有（承接）',legacy:true});}
   }
-  p.paperV4=true;p.version='4.3';paperSave(p);
+  p.paperV4=true;p.version='4.4';paperSave(p);
  }
  for(let kind of ['base','stop']){if(p[kind]&&!Array.isArray(p[kind].stopEvents))p[kind].stopEvents=[];}
- if(p.version!=='4.3')p.version='4.3';
+ if(p.version!=='4.4')p.version='4.4';
  return p;
 }
 function paperDD(eq){let peak=100000,dd=0;for(let x of eq){peak=Math.max(peak,x.e);if(peak>0)dd=Math.min(dd,x.e/peak-1)}return dd}
@@ -152,10 +152,10 @@ function paperStopAudit(a){
  let h='<div class="tableScroll"><table class="paperTable"><thead><tr><th>股票</th><th>觸發日</th><th>觸發收盤</th><th>觸發跌幅</th><th>成交日</th><th>開盤成交價</th><th>成交較買進</th><th>狀態</th></tr></thead><tbody>';
  for(let x of events){let base=Number(x.entry||0),fill=Number(x.fillPrice||0),trigger=Number(x.triggerClose||0),pct=Number(x.triggerPct??(base&&trigger?trigger/base-1:NaN));
  h+='<tr><td>'+paperEsc((STOCK_NAME[x.code]||x.code)+' '+x.code)+'</td><td>'+paperEsc(x.triggerDate||'歷史資料缺失')+'</td><td>'+(trigger>0?trigger.toFixed(2):'—')+'</td><td>'+(Number.isFinite(pct)?paperPct(pct):'—')+'</td><td>'+paperEsc(x.fillDate||'待成交')+'</td><td>'+(fill>0?fill.toFixed(2):'—')+'</td><td>'+(base&&fill?paperPct(fill/base-1):'—')+'</td><td>'+paperEsc(x.status||(x.fillDate?'已成交':'等待成交'))+'</td></tr>'}
- return h+'</tbody></table></div><p class="foot">v4.3 會先保存收盤觸發事件，再於下一個可取得官方開盤價的交易日記錄成交；若開盤價缺失，事件會保持等待成交，不會假造價格。舊紀錄缺少欄位時顯示「歷史資料缺失」，不推測補值。跳空時實際損失可能超過 -10%。</p>';
+ return h+'</tbody></table></div><p class="foot">v4.4 會先保存收盤觸發事件，再於下一個可取得官方開盤價的交易日記錄成交；若開盤價缺失，事件會保持等待成交，不會假造價格。舊紀錄缺少欄位時顯示「歷史資料缺失」，不推測補值。跳空時實際損失可能超過 -10%。</p>';
 }
 async function paperRepairStops(){
- if(paperBusy)return;paperBusy=true;const btn=$('paperRepair');if(btn)btn.disabled=true;
+ const btn=$('paperRepair');if(paperBusy){paperRender('目前另一項紙上帳戶作業仍在執行，請等它完成後再補查。');return;}paperBusy=true;if(btn){btn.disabled=false;btn.textContent='補查中，請稍候…';}
  try{
   const p=paperLoad();if(!p){paperRender('尚未啟用紙上帳戶，無法補查。');return}
   if(!DB)await openDB();
@@ -193,7 +193,7 @@ async function paperRepairStops(){
   }
   paperSave(p);paperRender('停損歷史補查完成：檢查 '+checked+' 筆，補回 '+repaired+' 筆；仍待確認 '+unresolved+' 筆。只使用手機已保存的官方收盤資料，沒有補造價格或交易。');
  }catch(e){paperRender('停損歷史補查未完成：'+String(e.message||e))}
- finally{paperBusy=false;if(btn)btn.disabled=false}
+ finally{paperBusy=false;if(btn){btn.disabled=false;btn.textContent='補查停損歷史資料（不改交易）';}}
 }
 function paperChart(a){let eq=a.equity||[];
  if(eq.length<2)return '<p class="foot">尚不足兩個更新日，暫無績效曲線。</p>';
@@ -209,7 +209,7 @@ function paperRender(msg=''){
  '<h3>買賣交易紀錄</h3><h4>無停損</h4>'+paperLedger(p.base)+'<h4>固定 -10%</h4>'+paperLedger(p.stop)+
  '<h3>固定 -10% 停損稽核</h3>'+paperStopAudit(p.stop)+
  '<h3>每日資產變化</h3><h4>無停損</h4>'+paperChart(p.base)+'<h4>固定 -10%</h4>'+paperChart(p.stop)+
- '<p class="foot">v4.3：收盤後產生訊號，下一交易日以官方開盤價進行假設成交。-10%為收盤價觸發、下一交易日開盤價賣出，不保證能以-10%成交。' +
+ '<p class="foot">v4.4：收盤後產生訊號，下一交易日以官方開盤價進行假設成交。-10%為收盤價觸發、下一交易日開盤價賣出，不保證能以-10%成交。' +
  '沿用舊版每次買進／賣出各扣0.585%的費用設定（總計約1.17%，不是原先所稱往返0.585%）。未來新增交易不改費率，避免破壞帳戶連續性。' +
  '若漏掉交易日，系統為避免倒填而暫停交易更新。歷史與紙上模擬皆不保證未來績效。</p>';
 }
@@ -316,4 +316,4 @@ async function paperRun(){if(paperBusy)return;paperBusy=true;const button=$('pap
  finally{paperBusy=false;button.disabled=false}
 }
 
- $('start').onclick=()=>go(false);$('retry').onclick=()=>go(true);$('stop').onclick=()=>{stop=true;if(ctl)ctl.abort()};$('validate').onclick=validate;$('stability').onclick=stability;$('risk').onclick=riskCompare;$('portfolio').onclick=portfolioCompare;$('inspectDB').onclick=inspectIndexedDB;$('paperInit').onclick=paperInit;$('paperRun').onclick=paperRun;$('paperBackup').onclick=paperBackup;$('paperRestore').onchange=paperRestore;$('paperRepair').onclick=paperRepairStops;paperRender();draw();load();})();
+ $('start').onclick=()=>go(false);$('retry').onclick=()=>go(true);$('stop').onclick=()=>{stop=true;if(ctl)ctl.abort()};$('validate').onclick=validate;$('stability').onclick=stability;$('risk').onclick=riskCompare;$('portfolio').onclick=portfolioCompare;$('inspectDB').onclick=inspectIndexedDB;$('paperInit').onclick=paperInit;$('paperRun').onclick=paperRun;$('paperBackup').onclick=paperBackup;$('paperRestore').onchange=paperRestore;$('paperRepair').addEventListener('click',()=>{paperRender('已收到補查指令，正在檢查帳戶與手機已保存的歷史行情…');Promise.resolve().then(paperRepairStops).catch(e=>paperRender('補查失敗：'+String(e&&e.message||e)))});paperRender();draw();load();})();
