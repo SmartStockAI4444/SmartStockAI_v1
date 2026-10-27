@@ -99,9 +99,10 @@ let paperBusy=false;
 const STOCK_NAME=Object.fromEntries(P.map(([c,n])=>[c,n]));
 function paperEsc(x){return String(x??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 function paperMoney(x){return 'NT$ '+Math.round(Number(x)||0).toLocaleString('en-US')}
+function paperMoneyExact(x){return 'NT$ '+(Number(x)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function paperPct(x){return (100*(Number(x)||0)).toFixed(2)+'%'}
 function twDate(){let x=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());return x}
-function paperNew(){let d=twDate();return{version:'4.4',started:d,lastDate:null,
+function paperNew(){let d=twDate();return{version:'4.5',started:d,lastDate:null,
  base:{cash:100000,pos:[],trades:[],equity:[{d,e:100000}],pending:{date:null,buys:[],sells:[]},log:[],stopEvents:[]},
  stop:{cash:100000,pos:[],trades:[],equity:[{d,e:100000}],pending:{date:null,buys:[],sells:[]},log:[],stopEvents:[]}}}
 function paperSave(x){localStorage.setItem(PAPER_KEY,JSON.stringify(x))}
@@ -122,7 +123,7 @@ function paperLoad(){let p=null;try{p=JSON.parse(localStorage.getItem(PAPER_KEY)
   p.paperV4=true;p.version='4.4';paperSave(p);
  }
  for(let kind of ['base','stop']){if(p[kind]&&!Array.isArray(p[kind].stopEvents))p[kind].stopEvents=[];}
- if(p.version!=='4.4')p.version='4.4';
+ if(p.version!=='4.5')p.version='4.5';
  return p;
 }
 function paperDD(eq){let peak=100000,dd=0;for(let x of eq){peak=Math.max(peak,x.e);if(peak>0)dd=Math.min(dd,x.e/peak-1)}return dd}
@@ -133,6 +134,10 @@ function paperAccountCard(name,a){let z=paperAssets(a),n=a.trades.length,w=a.tra
  '<span>總報酬 '+paperPct(z.equity/100000-1)+'</span><span>最大回撤 '+paperPct(paperDD(a.equity))+'</span>'+
  '<span>持股 '+a.pos.length+' 檔｜已完成 '+n+' 筆</span><span>已完成勝率 '+(n?paperPct(w/n):'—')+'</span>'+
  '<span>下次待成交：買進候選 '+a.pending.buys.length+' 檔、賣出 '+a.pending.sells.length+' 檔</span></div>'}
+function paperReconciliation(name,a){
+ const z=paperAssets(a),sum=Number(z.cash)+Number(z.stockValue),diff=Number(z.equity)-sum;
+ return '<div class="mini"><b>'+name+'</b><span>現金 '+paperMoneyExact(z.cash)+' + 持股市值 '+paperMoneyExact(z.stockValue)+' = 總資產 '+paperMoneyExact(z.equity)+'｜差額 '+paperMoneyExact(diff)+'</span></div>';
+}
 function paperHoldRows(a){if(!a.pos.length)return '<p class="foot">目前沒有持股。</p>';
  let h='<div class="tableScroll"><table class="paperTable"><thead><tr><th>股票</th><th>買進日</th><th>股數</th><th>買進</th><th>最新收盤</th><th>未實現損益</th><th>持有日數</th></tr></thead><tbody>';
  for(let x of a.pos){let pnl=x.shares*(Number(x.last||x.entry)-x.entry);h+='<tr><td>'+paperEsc(STOCK_NAME[x.code]||x.code)+' '+paperEsc(x.code)+(x.legacy?' <small>承接</small>':'')+'</td><td>'+paperEsc(x.in||'—')+'</td><td>'+x.shares+'</td><td>'+Number(x.entry).toFixed(2)+'</td><td>'+Number(x.last||x.entry).toFixed(2)+'</td><td class="'+(pnl>=0?'gain':'loss')+'">'+paperMoney(pnl)+'</td><td>'+Number(x.days||0)+'</td></tr>'}
@@ -205,11 +210,13 @@ function paperRender(msg=''){
  $('paperResult').innerHTML=(msg?'<p class="statusText">'+paperEsc(msg)+'</p>':'')+
  '<p>啟用日：<b>'+paperEsc(p.started)+'</b>｜最後更新：<b>'+paperEsc(p.lastDate||'尚未更新')+'</b></p>'+
  '<div class="compare">'+paperAccountCard('基準：無停損',p.base)+paperAccountCard('對照：固定 -10%',p.stop)+'</div>'+
+ '<h3>帳戶資產對帳（精確至小數點後 2 位）</h3>'+paperReconciliation('無停損',p.base)+paperReconciliation('固定 -10%',p.stop)+
+ '<p class="foot">總覽卡片金額以整元顯示，因此現金與持股市值分別四捨五入後相加，可能與總資產差 1 元；此處以未四捨五入數字核對。</p>'+
  '<h3>兩組持股明細</h3><h4>無停損</h4>'+paperHoldRows(p.base)+'<h4>固定 -10%</h4>'+paperHoldRows(p.stop)+
  '<h3>買賣交易紀錄</h3><h4>無停損</h4>'+paperLedger(p.base)+'<h4>固定 -10%</h4>'+paperLedger(p.stop)+
  '<h3>固定 -10% 停損稽核</h3>'+paperStopAudit(p.stop)+
  '<h3>每日資產變化</h3><h4>無停損</h4>'+paperChart(p.base)+'<h4>固定 -10%</h4>'+paperChart(p.stop)+
- '<p class="foot">v4.4：收盤後產生訊號，下一交易日以官方開盤價進行假設成交。-10%為收盤價觸發、下一交易日開盤價賣出，不保證能以-10%成交。' +
+ '<p class="foot">v4.5：收盤後產生訊號，下一交易日以官方開盤價進行假設成交。-10%為收盤價觸發、下一交易日開盤價賣出，不保證能以-10%成交。' +
  '沿用舊版每次買進／賣出各扣0.585%的費用設定（總計約1.17%，不是原先所稱往返0.585%）。未來新增交易不改費率，避免破壞帳戶連續性。' +
  '若漏掉交易日，系統為避免倒填而暫停交易更新。歷史與紙上模擬皆不保證未來績效。</p>';
 }
