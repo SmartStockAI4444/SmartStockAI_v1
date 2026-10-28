@@ -29,3 +29,7 @@
 button.secondary{background:#29517b}
 .accountSummary b{font-size:19px}
 @media(max-width:420px){.compare{gap:7px}.compare>div{padding:11px}.compare span{font-size:12px;overflow-wrap:anywhere}}
+
+/* v4.6: make the history-repair action clearly available */
+button.repairAction{background:#2563eb;color:#fff;border:1px solid #5b91ff;font-weight:700;box-shadow:0 2px 8px #0002}
+button.repairAction:disabled{opacity:.72;cursor:wait}

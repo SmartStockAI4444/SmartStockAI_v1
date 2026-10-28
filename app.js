@@ -160,7 +160,7 @@ function paperStopAudit(a){
  return h+'</tbody></table></div><p class="foot">v4.4 會先保存收盤觸發事件，再於下一個可取得官方開盤價的交易日記錄成交；若開盤價缺失，事件會保持等待成交，不會假造價格。舊紀錄缺少欄位時顯示「歷史資料缺失」，不推測補值。跳空時實際損失可能超過 -10%。</p>';
 }
 async function paperRepairStops(){
- const btn=$('paperRepair');if(paperBusy){paperRender('目前另一項紙上帳戶作業仍在執行，請等它完成後再補查。');return;}paperBusy=true;if(btn){btn.disabled=false;btn.textContent='補查中，請稍候…';}
+ const btn=$('paperRepair');if(paperBusy){paperRender('目前另一項紙上帳戶作業仍在執行，請等它完成後再補查。');if(btn){btn.disabled=false;btn.textContent='補查停損歷史資料（不改交易）';}return;}paperBusy=true;if(btn){btn.disabled=false;btn.textContent='補查中，請稍候…';}
  try{
   const p=paperLoad();if(!p){paperRender('尚未啟用紙上帳戶，無法補查。');return}
   if(!DB)await openDB();
@@ -323,4 +323,4 @@ async function paperRun(){if(paperBusy)return;paperBusy=true;const button=$('pap
  finally{paperBusy=false;button.disabled=false}
 }
 
- $('start').onclick=()=>go(false);$('retry').onclick=()=>go(true);$('stop').onclick=()=>{stop=true;if(ctl)ctl.abort()};$('validate').onclick=validate;$('stability').onclick=stability;$('risk').onclick=riskCompare;$('portfolio').onclick=portfolioCompare;$('inspectDB').onclick=inspectIndexedDB;$('paperInit').onclick=paperInit;$('paperRun').onclick=paperRun;$('paperBackup').onclick=paperBackup;$('paperRestore').onchange=paperRestore;$('paperRepair').addEventListener('click',()=>{paperRender('已收到補查指令，正在檢查帳戶與手機已保存的歷史行情…');Promise.resolve().then(paperRepairStops).catch(e=>paperRender('補查失敗：'+String(e&&e.message||e)))});paperRender();draw();load();})();
+ $('start').onclick=()=>go(false);$('retry').onclick=()=>go(true);$('stop').onclick=()=>{stop=true;if(ctl)ctl.abort()};$('validate').onclick=validate;$('stability').onclick=stability;$('risk').onclick=riskCompare;$('portfolio').onclick=portfolioCompare;$('inspectDB').onclick=inspectIndexedDB;$('paperInit').onclick=paperInit;$('paperRun').onclick=paperRun;$('paperBackup').onclick=paperBackup;$('paperRestore').onchange=paperRestore;$('paperRepair').addEventListener('click',()=>{const b=$('paperRepair');if(paperBusy){paperRender('目前另一項紙上帳戶作業仍在執行，請等它完成後再補查。');return;}b.disabled=true;b.textContent='補查中，請稍候…';paperRender('已收到補查指令，正在檢查帳戶與手機已保存的歷史行情…');Promise.resolve().then(paperRepairStops).catch(e=>paperRender('補查失敗：'+String(e&&e.message||e))).finally(()=>{b.disabled=false;b.textContent='補查停損歷史資料（不改交易）';});});paperRender();draw();load();})();
