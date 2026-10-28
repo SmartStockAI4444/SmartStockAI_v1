@@ -164,7 +164,7 @@ async function paperRepairStops(){
  try{
   const p=paperLoad();if(!p){paperRender('尚未啟用紙上帳戶，無法補查。');return}
   if(!DB)await openDB();
-  let checked=0,repaired=0,unresolved=0,notes=[];
+  let checked=0,alreadyComplete=0,repaired=0,unresolved=0,notes=[];
   const monthsByCode={};
   async function rowsFor(code){
    if(monthsByCode[code])return monthsByCode[code];
@@ -183,8 +183,9 @@ async function paperRepairStops(){
     a.stopEvents.push({code:String(x.code),entry:Number(x.entry)||null,triggerDate:x.stopTriggerDate||null,triggerClose:x.stopTriggerClose||null,triggerPct:x.stopTriggerPct??null,fillDate:x.date||null,fillPrice:Number(x.price)||null,status:'待核對舊紀錄'});known.add(k);
    }
    for(const e of a.stopEvents){
-    if(e.triggerDate&&Number(e.triggerClose)>0&&Number.isFinite(Number(e.triggerPct)))continue;
-    checked++;const code=String(e.code||'');if(!code) {unresolved++;continue}
+    checked++;
+    if(e.triggerDate&&Number(e.triggerClose)>0&&Number.isFinite(Number(e.triggerPct))){alreadyComplete++;continue;}
+    const code=String(e.code||'');if(!code) {unresolved++;continue}
     const logs=(a.log||[]).filter(x=>x.code===code);const end=e.fillDate||e.triggerDate||twDate();
     let buy=logs.filter(x=>x.type==='buy'&&x.date&&x.date<=end&&Number(x.price||0)>0).sort((x,y)=>String(y.date).localeCompare(String(x.date)))[0];
     const pos=a.pos.find(x=>x.code===code&&Number(x.entry)>0);
@@ -196,7 +197,7 @@ async function paperRepairStops(){
     else {e.status=rows.some(r=>r.d>start&&r.d<=end)?'已查本機行情，未找到可確認的 -10% 收盤觸發':'歷史資料缺失：本機行情範圍不足';unresolved++}
    }
   }
-  paperSave(p);paperRender('停損歷史補查完成：檢查 '+checked+' 筆，補回 '+repaired+' 筆；仍待確認 '+unresolved+' 筆。只使用手機已保存的官方收盤資料，沒有補造價格或交易。');
+  paperSave(p);paperRender('停損歷史補查完成：檢查 '+checked+' 筆；原本資料完整 '+alreadyComplete+' 筆；本次補回 '+repaired+' 筆；仍待確認 '+unresolved+' 筆。已完整的事件會略過重查，不會重複補寫，也不會改動買賣交易。只使用手機已保存的官方收盤資料，沒有補造價格或交易。');
  }catch(e){paperRender('停損歷史補查未完成：'+String(e.message||e))}
  finally{paperBusy=false;if(btn){btn.disabled=false;btn.textContent='補查停損歷史資料（不改交易）';}}
 }
