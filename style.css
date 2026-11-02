@@ -33,3 +33,5 @@ button.secondary{background:#29517b}
 /* v4.6: make the history-repair action clearly available */
 button.repairAction{background:#2563eb;color:#fff;border:1px solid #5b91ff;font-weight:700;box-shadow:0 2px 8px #0002}
 button.repairAction:disabled{opacity:.72;cursor:wait}
+
+.integrityList{margin-top:12px;display:grid;gap:7px}.integrityList .mini{border:1px solid #29405a;border-radius:9px;padding:9px;background:#0d1b2d}.integrityList .mini b{display:block;margin-bottom:4px}

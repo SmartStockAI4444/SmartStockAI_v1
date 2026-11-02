@@ -122,7 +122,7 @@ function paperLoad(){let p=null;try{p=JSON.parse(localStorage.getItem(PAPER_KEY)
   }
   p.paperV4=true;p.version='4.4';paperSave(p);
  }
- for(let kind of ['base','stop']){if(p[kind]&&!Array.isArray(p[kind].stopEvents))p[kind].stopEvents=[];}
+ for(let kind of ['base','stop']){if(p[kind]&&!Array.isArray(p[kind].stopEvents))p[kind].stopEvents=[];if(p[kind]&&!Array.isArray(p[kind].processedDates))p[kind].processedDates=[];}
  if(p.version!=='4.5')p.version='4.5';
  return p;
 }
@@ -201,6 +201,40 @@ async function paperRepairStops(){
  }catch(e){paperRender('停損歷史補查未完成：'+String(e.message||e))}
  finally{paperBusy=false;if(btn){btn.disabled=false;btn.textContent='補查停損歷史資料（不改交易）';}}
 }
+
+function paperIntegrityCheck(){
+ const p=paperLoad();if(!p){paperRender('尚未啟用紙上帳戶，無法檢查。');return}
+ const checks=[],add=(name,ok,detail)=>checks.push({name,ok,detail});
+ for(const [kind,label] of [['base','無停損組'],['stop','固定 -10% 組']]){
+  const a=p[kind]||{};
+  const arrays=['pos','trades','log','equity','stopEvents','processedDates'];
+  const missing=arrays.filter(k=>!Array.isArray(a[k]));
+  add(label+'資料結構',!missing.length,missing.length?'缺少：'+missing.join('、'):'必要資料欄位完整');
+  const invalidCash=!Number.isFinite(Number(a.cash));
+  add(label+'現金數值',!invalidCash,invalidCash?'現金不是有效數字':'現金數值有效');
+  const dupPos=(a.pos||[]).map(x=>x.code).filter((c,i,all)=>all.indexOf(c)!==i);
+  add(label+'持股唯一性',!dupPos.length,dupPos.length?'重複股票：'+[...new Set(dupPos)].join('、'):'沒有重複持股代碼');
+  const dupStops=(a.stopEvents||[]).map(x=>String(x.code)+'|'+String(x.triggerDate||x.fillDate||'')).filter((k,i,all)=>all.indexOf(k)!==i);
+  add(label+'停損事件唯一性',!dupStops.length,dupStops.length?'疑似重複事件 '+dupStops.length+' 筆':'沒有重複停損事件鍵值');
+  const eq=(a.equity||[]);const badEq=eq.some(x=>!Number.isFinite(Number(x.e))||!x.d);
+  add(label+'資產紀錄',!badEq,badEq?'發現日期或資產數值缺漏':'資產紀錄格式正常');
+  const z=paperAssets(a),diff=Math.abs(z.equity-(Number(z.cash)+z.stockValue));
+  add(label+'資產對帳',diff<0.005,'差額 '+paperMoneyExact(diff));
+ }
+ add('兩組帳戶資料隔離',p.base!==p.stop&&p.base.pos!==p.stop.pos&&p.base.log!==p.stop.log,'兩組帳戶使用獨立的持股與交易紀錄');
+ // A synthetic, isolated dry-run proves a repeated same-day application is ignored.
+ const demo={cash:100000,pos:[],trades:[],equity:[{d:'2026-01-01',e:100000}],pending:{date:null,buys:[],sells:[]},log:[],stopEvents:[],processedDates:[]};
+ const prices={'2330':100},opens={'2330':100},signals=[{code:'2330',score:80}];
+ const first=paperApplyDay(demo,'2026-01-02',prices,opens,signals,false);
+ const before=JSON.stringify({cash:demo.cash,pos:demo.pos,log:demo.log,equity:demo.equity});
+ const second=paperApplyDay(demo,'2026-01-02',prices,opens,signals,false);
+ const after=JSON.stringify({cash:demo.cash,pos:demo.pos,log:demo.log,equity:demo.equity});
+ add('同日重複執行防護',second.duplicate&&before===after,'第一次處理 '+(first.buys+first.sells)+' 項；第二次被拒絕，帳戶內容未變');
+ const passed=checks.filter(x=>x.ok).length,total=checks.length;
+ const rows=checks.map(x=>'<div class="mini"><b>'+(x.ok?'✓ ':'⚠ ')+paperEsc(x.name)+'</b><span>'+paperEsc(x.detail)+'</span></div>').join('');
+ paperRender('帳務完整性檢查：'+passed+'/'+total+' 項通過。此檢查不會買賣股票、不會改變現金或持股；重複執行測試使用獨立的臨時資料。'+
+ '<div class="integrityList">'+rows+'</div>');
+}
 function paperChart(a){let eq=a.equity||[];
  if(eq.length<2)return '<p class="foot">尚不足兩個更新日，暫無績效曲線。</p>';
  let points=eq.map(x=>Number(x.e)||100000),lo=Math.min(...points),hi=Math.max(...points),range=hi-lo||1;
@@ -252,7 +286,9 @@ async function paperLatestHistory(code){
 }
 // Daily event order: prior-close orders at next open; new signal at this close, never same-day fill.
 function paperApplyDay(a,date,prices,opens,signals,stopEnabled){
- let actions={buys:0,sells:0,missingOpen:0};
+ let actions={buys:0,sells:0,missingOpen:0,duplicate:false};
+ if(!Array.isArray(a.processedDates))a.processedDates=[];
+ if(a.processedDates.includes(date)){actions.duplicate=true;return actions;}
  let pending=a.pending||{date:null,buys:[],sells:[]};
  let sellCarry=[];
  if(pending.date&&pending.date<date){
@@ -281,6 +317,7 @@ function paperApplyDay(a,date,prices,opens,signals,stopEnabled){
   }else if(x.days>=20){sell.push(x.code);x.queuedReason='time'}}
  a.pending={date,buys:signals.map(s=>({code:s.code,score:s.score})),sells:sell};
  let val=paperAssets(a).equity;a.equity.push({d:date,e:val});
+ a.processedDates.push(date);if(a.processedDates.length>500)a.processedDates=a.processedDates.slice(-500);
  return actions;
 }
 async function paperRun(){if(paperBusy)return;paperBusy=true;const button=$('paperRun');button.disabled=true;
@@ -324,4 +361,4 @@ async function paperRun(){if(paperBusy)return;paperBusy=true;const button=$('pap
  finally{paperBusy=false;button.disabled=false}
 }
 
- $('start').onclick=()=>go(false);$('retry').onclick=()=>go(true);$('stop').onclick=()=>{stop=true;if(ctl)ctl.abort()};$('validate').onclick=validate;$('stability').onclick=stability;$('risk').onclick=riskCompare;$('portfolio').onclick=portfolioCompare;$('inspectDB').onclick=inspectIndexedDB;$('paperInit').onclick=paperInit;$('paperRun').onclick=paperRun;$('paperBackup').onclick=paperBackup;$('paperRestore').onchange=paperRestore;$('paperRepair').addEventListener('click',()=>{const b=$('paperRepair');if(paperBusy){paperRender('目前另一項紙上帳戶作業仍在執行，請等它完成後再補查。');return;}b.disabled=true;b.textContent='補查中，請稍候…';paperRender('已收到補查指令，正在檢查帳戶與手機已保存的歷史行情…');Promise.resolve().then(paperRepairStops).catch(e=>paperRender('補查失敗：'+String(e&&e.message||e))).finally(()=>{b.disabled=false;b.textContent='補查停損歷史資料（不改交易）';});});paperRender();draw();load();})();
+ $('start').onclick=()=>go(false);$('retry').onclick=()=>go(true);$('stop').onclick=()=>{stop=true;if(ctl)ctl.abort()};$('validate').onclick=validate;$('stability').onclick=stability;$('risk').onclick=riskCompare;$('portfolio').onclick=portfolioCompare;$('inspectDB').onclick=inspectIndexedDB;$('paperInit').onclick=paperInit;$('paperRun').onclick=paperRun;$('paperBackup').onclick=paperBackup;$('paperRestore').onchange=paperRestore;$('paperIntegrity').onclick=paperIntegrityCheck;$('paperRepair').addEventListener('click',()=>{const b=$('paperRepair');if(paperBusy){paperRender('目前另一項紙上帳戶作業仍在執行，請等它完成後再補查。');return;}b.disabled=true;b.textContent='補查中，請稍候…';paperRender('已收到補查指令，正在檢查帳戶與手機已保存的歷史行情…');Promise.resolve().then(paperRepairStops).catch(e=>paperRender('補查失敗：'+String(e&&e.message||e))).finally(()=>{b.disabled=false;b.textContent='補查停損歷史資料（不改交易）';});});paperRender();draw();load();})();
