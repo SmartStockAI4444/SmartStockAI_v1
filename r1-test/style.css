@@ -1,0 +1,39 @@
+*{box-sizing:border-box}body{margin:0;background:#07111f;color:#eef3ff;font-family:system-ui,sans-serif}header,main{max-width:720px;margin:auto}header{padding:25px 18px;background:#111d31}h1{margin:0}small,header p,.foot{color:#9daabd}main{padding:16px}.ok,.note,.warn,.box,.card,.mini{background:#142137;border-radius:14px;padding:15px;margin:12px 0}.ok{color:#75dda4;border-left:4px solid #75dda4}.note{border-left:4px solid #f1b936;line-height:1.6}.warn{color:#ffcf8a}.meter{height:11px;background:#19273d;border-radius:10px;overflow:hidden}.meter div{height:100%;background:#3478ef}.card,.mini{display:flex;justify-content:space-between;gap:10px}.card span,.mini span{color:#aab5c7;text-align:right}button{width:100%;border:0;border-radius:14px;padding:16px;margin:7px 0;background:#3074ed;color:#fff;font-weight:800;font-size:16px}button:disabled{opacity:.42}.stop{background:#76520b}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.grid div{background:#0e1a2d;border-radius:12px;padding:13px}.grid b{display:block;font-size:24px}.grid small{color:#9daabd}
+.compare{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+.compare>div{background:#0e1a2d;border-radius:12px;padding:14px}
+.compare h4{margin:0 0 10px;color:#aab5c7}
+.compare b,.compare span{display:block;margin:5px 0}
+@media(max-width:430px){.compare{grid-template-columns:1fr 1fr}.compare b{font-size:17px}}
+
+.riskTable{display:grid;grid-template-columns:1.05fr .7fr .9fr .9fr 1.25fr;gap:1px;background:#26354b;border-radius:10px;overflow:hidden;margin:12px 0;font-size:13px}
+.riskTable>div{background:#101d31;padding:10px 5px;text-align:center}
+.riskTable .rh{font-weight:700;color:#aab7ca;background:#17263d}
+@media(max-width:430px){.riskTable{font-size:11px}.riskTable>div{padding:9px 2px}}
+
+#portfolioResult .compare{margin-top:12px}
+#portfolioResult .compare span{font-size:13px;color:#c2ccda}
+
+#paperResult{margin-top:14px}#paperResult .compare{margin-top:10px}
+
+/* v4 paper trade management */
+.paperTable{width:100%;border-collapse:collapse;white-space:nowrap;font-size:12px}
+.paperTable th,.paperTable td{padding:10px 8px;border-bottom:1px solid #2d3d53;text-align:left}
+.paperTable th{color:#b2c9e8;background:#1d304a}
+.tableScroll{max-width:100%;overflow-x:auto;border-radius:10px;border:1px solid #253851;margin:8px 0 14px}
+.gain{color:#8de1b7}.loss{color:#ffb3ad}
+.paperChart{width:100%;display:block;background:#101e32;border-radius:10px;margin:8px 0}
+.paperDates{font-size:12px;color:#a8b6cc}
+.statusText{white-space:pre-wrap;overflow-wrap:anywhere;background:#10243b;border-radius:9px;padding:12px}
+.restoreLabel{display:block;background:#263955;border-radius:12px;padding:12px;text-align:center;font-weight:700;margin-top:8px}
+#paperRestore{margin:6px 0 12px;width:100%;font-size:12px;color:#b5c9e2}
+button.secondary{background:#29517b}
+.accountSummary b{font-size:19px}
+@media(max-width:420px){.compare{gap:7px}.compare>div{padding:11px}.compare span{font-size:12px;overflow-wrap:anywhere}}
+
+/* v4.6: make the history-repair action clearly available */
+button.repairAction{background:#2563eb;color:#fff;border:1px solid #5b91ff;font-weight:700;box-shadow:0 2px 8px #0002}
+button.repairAction:disabled{opacity:.72;cursor:wait}
+
+.integrityList{margin-top:12px;display:grid;gap:7px}.integrityList .mini{border:1px solid #29405a;border-radius:9px;padding:9px;background:#0d1b2d}.integrityList .mini b{display:block;margin-bottom:4px}
+
+.rankWeights{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}.rankWeights span{background:#203653;border-radius:8px;padding:7px;font-size:12px;color:#d6e5fb}#rankResult{overflow-wrap:anywhere}#rankResult .tableScroll{max-width:100%}#rankResult .paperTable td{vertical-align:middle}
