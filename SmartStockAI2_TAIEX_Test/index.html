@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#081323">
+<title>SmartStockAI 2.0｜大盤資料模組測試</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>SmartStockAI 2.0</h1>
+  <p>R1.0｜TAIEX 大盤歷史資料模組（獨立測試版）</p>
+</header>
+<main>
+  <section class="panel">
+    <h2>第一步：取得加權指數 36 個月資料</h2>
+    <p class="note">資料來源：臺灣證券交易所官方「發行量加權股價指數歷史資料」。本工具只讀取及新增獨立資料，不修改 v4.8 的股票行情或紙上帳戶。</p>
+    <div class="summary" id="summary">尚未開始檢查</div>
+    <div class="progress"><div id="bar"></div></div>
+    <div class="actions">
+      <button id="start">開始／繼續取得 36 個月大盤資料</button>
+      <button id="stop" class="secondary" disabled>暫停</button>
+    </div>
+    <div id="status" class="status">等待操作。建議保持此頁面在前景，避免手機瀏覽器暫停下載。</div>
+  </section>
+
+  <section class="panel">
+    <h2>資料完整性檢查</h2>
+    <div id="audit" class="status">取得資料後，這裡會顯示月份數、交易日數、日期範圍及缺漏月份。</div>
+    <button id="auditBtn" class="secondary">重新檢查已保存資料</button>
+  </section>
+
+  <section class="panel">
+    <h2>最近 10 筆資料</h2>
+    <div class="tableWrap">
+      <table>
+        <thead><tr><th>日期</th><th>開盤</th><th>最高</th><th>最低</th><th>收盤</th></tr></thead>
+        <tbody id="recent"><tr><td colspan="5">尚無資料</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel warning">
+    <h2>本版本範圍</h2>
+    <ul>
+      <li>只建立 TAIEX 大盤資料，不計算股票分數。</li>
+      <li>不修改 SmartStockAI_MarketData 原資料庫。</li>
+      <li>新資料存放於 SmartStockAI2_Research 獨立資料庫。</li>
+      <li>官方資料是每日收盤後歷史資料，不是即時行情。</li>
+      <li>資料取得成功後，才進入下一階段的相對強度計算。</li>
+    </ul>
+  </section>
+</main>
+<footer>SmartStockAI 2.0｜獨立研究模組｜不連接券商、不下單</footer>
+<script src="app.js"></script>
+</body>
+</html>
