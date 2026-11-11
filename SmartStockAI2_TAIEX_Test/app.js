@@ -78,6 +78,20 @@ async function start(){
 }
 $('start').addEventListener('click',start);
 $('stop').addEventListener('click',()=>{stopRequested=true;$('status').textContent='收到暫停要求，完成目前月份後停止…'});
-$('auditBtn').addEventListener('click',()=>audit().catch(e=>$('audit').textContent='檢查失敗：'+e.message));
+$('auditBtn').addEventListener('click',async()=>{
+  const btn=$('auditBtn'), panel=$('audit');
+  if(btn.disabled)return;
+  btn.disabled=true;btn.textContent='檢查中…';
+  panel.textContent='正在重新讀取手機中已保存的大盤資料，請稍候…';
+  try{
+    const result=await audit();
+    const checkedAt=new Date().toLocaleString('zh-TW',{hour12:false});
+    panel.textContent+=`\\n\\n本次檢查完成：${checkedAt}\\n檢查結果：${result.complete===MONTHS&&result.missing.length===0?'完整月份資料已全部讀取':'仍有月份資料需要確認'}。`;
+  }catch(e){
+    panel.textContent='檢查失敗：'+String(e.message||e);
+  }finally{
+    btn.disabled=false;btn.textContent='重新檢查已保存資料';
+  }
+});
 openDB().then(audit).catch(e=>$('status').textContent='資料庫初始化失敗：'+e.message);
 })();
