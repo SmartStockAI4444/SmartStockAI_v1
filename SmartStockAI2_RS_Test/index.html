@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1728">
+<title>SmartStockAI 2.0｜相對大盤強度測試</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>SmartStockAI 2.0</h1>
+    <p>R1｜相對大盤強度計算（獨立研究測試）</p>
+  </div>
+</header>
+<main class="wrap">
+  <section class="panel">
+    <h2>第一個評分模組：相對大盤強度（25 分）</h2>
+    <p>讀取手機既有的 50 檔股票歷史收盤資料，以及 TAIEX 大盤資料。只讀取、不修改任何既有資料庫或模擬帳戶。</p>
+    <div class="weights">
+      <div><b>20 日</b><strong>5 分</strong><small>短期相對強度</small></div>
+      <div><b>60 日</b><strong>9 分</strong><small>中期相對強度</small></div>
+      <div><b>120 日</b><strong>11 分</strong><small>長期相對強度</small></div>
+    </div>
+    <button id="run">讀取兩個資料庫並計算</button>
+    <p class="hint" id="status">尚未讀取。請在原本已下載過股票及大盤資料的同一支手機、同一個瀏覽器開啟。</p>
+  </section>
+
+  <section class="panel">
+    <h2>資料讀取狀態</h2>
+    <div id="diagnostics" class="message">等待操作。</div>
+  </section>
+
+  <section class="panel">
+    <h2>相對大盤強度排名</h2>
+    <p class="hint">相對強度＝股票區間報酬率－加權指數同期報酬率。各期間分開排名，再依 5／9／11 分加權。缺資料不會當作 0 分，也不會任意調整權重。</p>
+    <div class="tableWrap">
+      <table>
+        <thead><tr><th>排名</th><th>股票</th><th>20 日差</th><th>60 日差</th><th>120 日差</th><th>分數／25</th></tr></thead>
+        <tbody id="results"><tr><td colspan="6">尚無計算結果</td></tr></tbody>
+      </table>
+    </div>
+    <p class="hint" id="footnote"></p>
+  </section>
+  <section class="panel">
+    <h2>計算規則</h2>
+    <ul>
+      <li>以加權指數交易日作為共同日期基準，分別比較前 20、60、120 個交易日。</li>
+      <li>每檔股票必須在基準日及三個回看日期都有有效收盤價，才納入完整 25 分排名。</li>
+      <li>每個期間依 50 檔股票中的相對強度由弱至強排名；同分採平均名次。</li>
+      <li>百分位分數＝100 ×（名次－1）÷（有效股票數－1）。各期間分數乘上該期間權重。</li>
+      <li>若完整樣本少於 10 檔，停止排名並顯示資料不足，不產生看似精確的分數。</li>
+    </ul>
+    <p class="disclaimer">本頁是研究測試，不是買賣建議，也不代表策略已通過歷史績效驗證。</p>
+  </section>
+</main>
+<footer>SmartStockAI 2.0｜獨立測試模組 R1</footer>
+<script src="app.js"></script>
+</body>
+</html>
