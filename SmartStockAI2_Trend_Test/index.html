@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#0b1728">
+<title>SmartStockAI 2.0｜趨勢分析測試 R1.1</title><link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header><div class="wrap"><h1>SmartStockAI 2.0</h1><p>R1.1｜趨勢分析計算（獨立研究測試）</p></div></header>
+<main class="wrap">
+<section class="panel">
+<h2>第二個評分模組：趨勢分析（25 分）</h2>
+<p>讀取手機既有的 50 檔股票歷史收盤資料，只讀取、不修改任何既有資料庫或模擬帳戶。使用各股票截至共同基準日的最近交易日收盤序列計算均線。</p>
+<div class="weights">
+<div><b>收盤 ÷ MA20</b><strong>5 分</strong><small>短期趨勢</small></div>
+<div><b>收盤 ÷ MA60</b><strong>5 分</strong><small>中期趨勢</small></div>
+<div><b>收盤 ÷ MA120</b><strong>5 分</strong><small>長期趨勢</small></div>
+<div><b>MA20 ÷ MA60</b><strong>5 分</strong><small>短中期排列</small></div>
+<div><b>MA60 ÷ MA120</b><strong>5 分</strong><small>中長期排列</small></div>
+</div>
+<button id="run">讀取股票資料並計算趨勢分數</button>
+<p class="hint" id="status">尚未讀取。請在已下載過股票歷史資料的同一支手機、同一個瀏覽器開啟。</p>
+</section>
+<section class="panel"><h2>資料讀取狀態</h2><div id="diagnostics" class="message">等待操作。</div></section>
+<section class="panel"><h2>趨勢分析排名</h2>
+<p class="hint">五項指標各自依有效股票的相對百分位排名計分；每項最高 5 分。比值高代表相對均線位置較強。同分採平均名次，資料不足不補 0，也不重分權重。</p>
+<div class="tableWrap"><table><thead><tr><th>排名</th><th>股票</th><th>收盤/MA20</th><th>收盤/MA60</th><th>收盤/MA120</th><th>MA20/60</th><th>MA60/120</th><th>趨勢分/25</th></tr></thead><tbody id="results"><tr><td colspan="8">尚無計算結果</td></tr></tbody></table></div>
+<p class="hint" id="footnote"></p></section>
+<section class="panel"><h2>計算規則</h2><ul>
+<li>以 R1 相同的 36 個月股票歷史收盤資料及最新共同資料基準日計算。</li>
+<li>MA20、MA60、MA120 分別為基準日當天及之前最近 20、60、120 筆有效股票交易日收盤價的簡單平均。</li>
+<li>五項比較值依序為：收盤/MA20−1、收盤/MA60−1、收盤/MA120−1、MA20/MA60−1、MA60/MA120−1。</li>
+<li>每項比較值在完整樣本中由弱至強排名；百分位＝100×（平均名次−1）÷（有效樣本數−1）。每項百分位乘以 5 分。</li>
+<li>只要缺少基準日收盤或任一均線所需資料，該股票就不納入完整 25 分排名；完整樣本少於 10 檔時停止排名。</li>
+</ul><p class="disclaimer">本頁是研究測試，不是買賣建議，也不代表策略已通過歷史績效驗證。均線排名分數是相對分數，不等同於未來報酬機率。</p></section>
+</main><footer>SmartStockAI 2.0｜獨立測試模組 R1.1</footer><script src="app.js"></script>
+</body></html>
