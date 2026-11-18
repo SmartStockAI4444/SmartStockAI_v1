@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#0b1728">
+<title>SmartStockAI 2.0｜雙模組 50 分整合測試 R1</title><link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header><div class="wrap"><h1>SmartStockAI 2.0</h1><p>R1｜相對大盤強度＋趨勢分析（50 分整合研究測試）</p></div></header>
+<main class="wrap">
+<section class="panel">
+<h2>第一階段：雙模組整合排名（50 分）</h2>
+<p>同時讀取手機既有的股票歷史收盤資料及 TAIEX 大盤資料。只讀取、不修改任何既有資料庫或模擬帳戶。兩個模組會使用完全相同的完整股票樣本計算百分位，避免不同樣本造成分數不可直接比較。</p>
+<div class="weights">
+<div><b>相對大盤強度</b><strong>25 分</strong><small>20／60／120 日差</small></div>
+<div><b>趨勢分析</b><strong>25 分</strong><small>五項均線指標各 5 分</small></div>
+<div><b>整合總分</b><strong>50 分</strong><small>兩模組直接相加</small></div>
+</div>
+<button id="run">讀取兩個資料庫並計算 50 分排名</button>
+<p class="hint" id="status">尚未讀取。請在已下載股票與 TAIEX 資料的同一支手機、同一個瀏覽器開啟。</p>
+</section>
+<section class="panel"><h2>資料讀取狀態</h2><div id="diagnostics" class="message">等待操作。</div></section>
+<section class="panel"><h2>整合選股排名</h2>
+<p class="hint">只納入兩個模組都具備完整資料的股票。相對大盤強度 25 分＋趨勢分析 25 分＝整合總分 50 分。各項均依同一批有效股票做相對百分位排名；同分採平均名次，缺資料不補 0、不重分權重。</p>
+<div class="tableWrap"><table><thead><tr><th>排名</th><th>股票</th><th>相對強度／25</th><th>趨勢／25</th><th>總分／50</th><th>20 日差</th><th>60 日差</th><th>120 日差</th></tr></thead><tbody id="results"><tr><td colspan="8">尚無計算結果</td></tr></tbody></table></div>
+<p class="hint" id="footnote"></p></section>
+<section class="panel"><h2>趨勢指標明細</h2><p class="hint">以下為均線位置與排列的原始比值差；分數已納入上方趨勢 25 分，不是額外加分。</p>
+<div class="tableWrap"><table><thead><tr><th>排名</th><th>股票</th><th>收盤／MA20</th><th>收盤／MA60</th><th>收盤／MA120</th><th>MA20／60</th><th>MA60／120</th><th>趨勢分／25</th></tr></thead><tbody id="trendResults"><tr><td colspan="8">尚無計算結果</td></tr></tbody></table></div></section>
+<section class="panel"><h2>計算規則與安全界線</h2><ul>
+<li>相對大盤強度：股票 20／60／120 交易日報酬率減去 TAIEX 同期報酬率，權重分別為 5／9／11 分。</li>
+<li>趨勢分析：收盤／MA20、收盤／MA60、收盤／MA120、MA20／MA60、MA60／MA120，五項各 5 分。</li>
+<li>MA20／60／120 使用截至共同基準日最近 20／60／120 筆有效股票交易日收盤價的簡單平均。</li>
+<li>整合時先取兩模組均完整的共同股票樣本，再用這批股票重新計算兩模組的百分位分數，確保 50 分可以直接相加比較。</li>
+<li>同分採平均名次；缺資料股票不當作 0 分、不任意重分權重；共同完整樣本少於 10 檔時停止排名。</li>
+<li>兩個 IndexedDB 均使用 readonly transaction；若既有資料庫不存在則停止，不建立空資料庫。此頁不呼叫網路 API，不讀取或更改紙上帳戶。</li>
+</ul><p class="disclaimer">這是研究測試，不是買賣建議，也不代表策略已通過歷史績效驗證。50 分排名只代表目前候選股票池中的相對強弱，不等同未來報酬機率。</p></section>
+</main><footer>SmartStockAI 2.0｜雙模組整合測試 R1</footer><script src="app.js"></script>
+</body></html>
