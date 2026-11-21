@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b1424"><title>SmartStockAI 2.0｜歷史選股驗證 R1</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header><div class="wrap"><div class="eyebrow">SMARTSTOCKAI 2.0 · RESEARCH ONLY</div><h1>歷史選股驗證</h1><p>每日排名｜前 5／前 10｜持有 20 個交易日｜樣本外測試</p></div></header>
+<main class="wrap">
+<section class="card intro"><h2>本次驗證規則</h2><div class="rules"><div><b>50 檔</b><span>固定研究股票池</span></div><div><b>70%／30%</b><span>形成期／樣本外</span></div><div><b>20 日</b><span>前瞻持有期間</span></div><div><b>0.585%</b><span>單次完整進出成本</span></div></div><p class="note">每個交易日收盤後計算排名，下一個大盤交易日收盤進場，再持有 20 個大盤交易日後出場。前 5／前 10 名等權重。每天產生一個 20 日前瞻樣本，因此樣本彼此會重疊；下方統計是訊號批次表現，不是可直接實現的資金曲線。</p>
+<button id="run">讀取既有資料並開始歷史驗證</button><div id="status" class="status">尚未開始。此工具只讀取既有行情資料，不會修改資料庫或模擬帳戶。</div></section>
+<section class="card"><h2>資料讀取狀態</h2><pre id="diagnostics">尚未讀取</pre></section>
+<section class="card"><h2>整體結果</h2><p id="splitInfo" class="note">尚未計算</p><div id="summary" class="metrics"></div></section>
+<section class="card"><h2>樣本外績效比較（主要判斷依據）</h2><div class="table-scroll"><table><thead><tr><th>策略</th><th>訊號數</th><th>勝率</th><th>平均報酬</th><th>中位報酬</th><th>超越大盤比例</th><th>平均大盤報酬</th></tr></thead><tbody id="oos"></tbody></table></div><p class="note">策略報酬已扣除 0.585% 進出成本；同期大盤比較也扣除相同成本。超越大盤比例以每個訊號批次與同期間 TAIEX 報酬比較。</p></section>
+<section class="card"><h2>形成期績效比較</h2><div class="table-scroll"><table><thead><tr><th>策略</th><th>訊號數</th><th>勝率</th><th>平均報酬</th><th>中位報酬</th><th>超越大盤比例</th><th>平均大盤報酬</th></tr></thead><tbody id="formation"></tbody></table></div></section>
+<section class="card"><h2>樣本外月份穩定性</h2><div class="table-scroll"><table><thead><tr><th>月份</th><th>前 5 平均報酬</th><th>前 10 平均報酬</th><th>大盤平均報酬</th><th>前 5 勝率</th><th>前 10 勝率</th></tr></thead><tbody id="monthly"></tbody></table></div></section>
+<section class="card"><h2>風險與限制</h2><div id="riskNotes" class="note">尚未計算</div><button id="csv" class="secondary" disabled>下載逐筆驗證 CSV</button></section>
+<footer>SmartStockAI 2.0 獨立研究模組 R1｜不構成投資建議，不保證獲利。</footer>
+</main><script src="app.js"></script>
+</body></html>
